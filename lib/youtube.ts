@@ -44,10 +44,21 @@ export interface VideoStats {
  * - https://youtube.com/channel/UCX6OQ3DkcsbYNE6H8uQQuVA
  * - https://youtube.com/c/SomeChannel
  */
-export async function extractChannelHandleOrId(url: string): Promise<{ type: 'id' | 'handle'; value: string } | null> {
+export async function extractChannelHandleOrId(url: string): Promise<{ type: 'id' | 'handle' | 'video'; value: string } | null> {
   try {
     const parsed = new URL(url);
     const path = parsed.pathname;
+    
+    // /watch?v=...
+    if (path === '/watch' && parsed.searchParams.has('v')) {
+      return { type: 'video', value: parsed.searchParams.get('v')! };
+    }
+    
+    // youtu.be/ID
+    if (parsed.hostname === 'youtu.be') {
+      const vidId = path.split('/')[1];
+      if (vidId) return { type: 'video', value: vidId };
+    }
     
     // /channel/ID
     if (path.startsWith('/channel/')) {
@@ -69,10 +80,8 @@ export async function extractChannelHandleOrId(url: string): Promise<{ type: 'id
     
     return null;
   } catch (_e) {
-    // maybe it's just the handle without Full URL
-    if (url.startsWith('@')) {
-      return { type: 'handle', value: url };
-    }
+    if (url.startsWith('@')) return { type: 'handle', value: url };
+    if (/^[a-zA-Z0-9_-]{11}$/.test(url)) return { type: 'video', value: url };
     return null;
   }
 }
@@ -87,7 +96,16 @@ export async function fetchChannelDetails(url: string): Promise<ChannelInfo> {
 
   let apiUrl = `${BASE_URL}/channels?part=snippet,statistics&key=${API_KEY}`;
   
-  if (parsed.type === 'id') {
+  if (parsed.type === 'video') {
+    const videoUrl = `${BASE_URL}/videos?part=snippet&id=${parsed.value}&key=${API_KEY}`;
+    const vidRes = await fetch(videoUrl);
+    if (!vidRes.ok) throw new Error('Failed to fetch video details');
+    const vidData = await vidRes.json();
+    if (!vidData.items || vidData.items.length === 0) throw new Error('Video not found');
+    
+    const channelId = vidData.items[0].snippet.channelId;
+    apiUrl += `&id=${channelId}`;
+  } else if (parsed.type === 'id') {
     apiUrl += `&id=${parsed.value}`;
   } else if (parsed.type === 'handle') {
     // the API expects handle with @

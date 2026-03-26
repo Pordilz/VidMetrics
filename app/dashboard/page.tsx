@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { formatNumber, formatDuration, timeAgo, formatDate, getTrendLabel, FLAGS } from '@/lib/formatters';
+import { formatNumber, formatDuration, timeAgo, formatDate, getTrendLabel } from '@/lib/formatters';
 /* eslint-disable @next/next/no-img-element */
 import { Chart, registerables } from 'chart.js';
 import NumberTicker from '@/components/ui/number-ticker';
@@ -158,7 +158,11 @@ async function fetchChannelData(query: string): Promise<AppData> {
     if (query.startsWith('@')) {
       apiUrl = `https://youtube.com/${query}`;
     } else if (!query.startsWith('http')) {
-      apiUrl = `https://youtube.com/@${query}`;
+      if (query.includes('youtube.com') || query.includes('youtu.be')) {
+        apiUrl = `https://${query}`;
+      } else {
+        apiUrl = `https://youtube.com/@${query}`;
+      }
     }
 
     const channelRes = await fetch(`/api/channel?url=${encodeURIComponent(apiUrl)}`);
@@ -211,8 +215,10 @@ async function fetchChannelData(query: string): Promise<AppData> {
     });
 
     return { channel, videos };
-  } catch {
-    // Fallback to demo data
+  } catch (error) {
+    console.error("Fetch error:", error);
+    // Only fallback to demo if specifically "API failed" or similar
+    // For now keep demo as safety, but ensure it receives the best name possible
     return generateDemoData(query);
   }
 }
@@ -287,6 +293,11 @@ function DashboardContent() {
                 if (ratio > 0.4) return '#1A1714';
                 return '#C8C2B8';
               }),
+              hoverBackgroundColor: '#C23510',
+              hoverBorderWidth: 4,
+              hoverBorderColor: 'rgba(0,0,0,0.1)',
+              hoverRadius: 8,
+              hitRadius: 10,
               borderRadius: 3,
               borderSkipped: false,
             }]
@@ -329,11 +340,12 @@ function DashboardContent() {
             datasets: [{
               data: [totalViews, totalLikes * 100, totalComments * 1000],
               backgroundColor: ['#1A1714', '#E8441A', '#8FA68E'],
-              borderWidth: 0, spacing: 3, borderRadius: 4,
+              borderWidth: 0, spacing: 3, borderRadius: 4, hoverOffset: 12,
             }]
           },
           options: {
             responsive: true, maintainAspectRatio: false, cutout: '68%',
+            layout: { padding: 16 },
             plugins: {
               legend: { position: 'bottom', labels: { color: '#6B6560', font: { family: 'Instrument Sans', size: 12, weight: 500 }, padding: 16, usePointStyle: true, pointStyleWidth: 8 } },
               tooltip: { backgroundColor: '#1A1714', titleColor: '#F7F5F0', bodyColor: '#F7F5F0', bodyFont: { family: 'DM Mono', size: 12 }, padding: 12, cornerRadius: 6 }
@@ -625,7 +637,12 @@ function DashboardContent() {
             <div className="channel-stats">
               <span className="channel-stat"><strong>{appData.channel.subs}</strong> subscribers</span>
               <span className="channel-stat"><strong>{appData.channel.videos.toLocaleString()}</strong> videos</span>
-              {appData.channel.country && <span className="channel-stat">{FLAGS[appData.channel.country] || '🌐'} {appData.channel.country}</span>}
+              {appData.channel.country && (
+                <span className="channel-stat" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <img src={`https://flagcdn.com/w20/${appData.channel.country.toLowerCase()}.png`} width="16" alt={appData.channel.country} style={{ borderRadius: 2 }} />
+                  {appData.channel.country}
+                </span>
+              )}
               <span className="channel-stat">Since {formatDate(appData.channel.created)}</span>
             </div>
           </div>

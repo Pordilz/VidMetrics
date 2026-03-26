@@ -55,6 +55,8 @@ export function validateYouTubeURL(input: string): boolean {
     /youtube\.com\/channel\/UC[\w-]+/i,
     /youtube\.com\/c\/[\w.-]+/i,
     /youtube\.com\/user\/[\w.-]+/i,
+    /youtube\.com\/watch\?v=[\w-]+/i,
+    /youtu\.be\/[\w-]+/i,
     /^@[\w.-]+$/,
     /^[\w.-]{3,}$/
   ];
