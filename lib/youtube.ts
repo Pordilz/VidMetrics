@@ -1,4 +1,6 @@
 // YouTube API utilities
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 const BASE_URL = 'https://www.googleapis.com/youtube/v3';
 const API_KEY = process.env.YOUTUBE_API_KEY;
 
@@ -66,7 +68,7 @@ export async function extractChannelHandleOrId(url: string): Promise<{ type: 'id
     }
     
     return null;
-  } catch (e) {
+  } catch (_e) {
     // maybe it's just the handle without Full URL
     if (url.startsWith('@')) {
       return { type: 'handle', value: url };

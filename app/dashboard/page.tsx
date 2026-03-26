@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, Suspense, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { formatNumber, formatDuration, timeAgo, formatDate, getTrendLabel, FLAGS, validateYouTubeURL } from '@/lib/formatters';
+import { formatNumber, formatDuration, timeAgo, formatDate, getTrendLabel, FLAGS } from '@/lib/formatters';
+/* eslint-disable @next/next/no-img-element */
 import { Chart, registerables } from 'chart.js';
 import NumberTicker from '@/components/ui/number-ticker';
 import { SpotlightCard } from '@/components/ui/spotlight-card';
@@ -181,11 +182,12 @@ async function fetchChannelData(query: string): Promise<AppData> {
       thumbnail: channelData.thumbnails?.high?.url || channelData.thumbnails?.medium?.url || channelData.thumbnails?.default?.url,
     };
 
+    type APIVideoEntry = { viewCount: string; likeCount: string; commentCount: string; engagementRate?: string; publishedAt: string; id: string; title: string; duration?: string; thumbnails?: { high?: { url: string }, medium?: { url: string } }, tags?: string[] };
     const now = Date.now();
-    const avgViews = videosData.length ? videosData.reduce((s: number, v: any) => s + parseInt(v.viewCount), 0) / videosData.length : 1;
-    const avgEng = videosData.length ? videosData.reduce((s: number, v: any) => s + parseFloat(v.engagementRate || '0'), 0) / videosData.length : 1;
+    const avgViews = videosData.length ? videosData.reduce((s: number, v: APIVideoEntry) => s + parseInt(v.viewCount), 0) / videosData.length : 1;
+    const avgEng = videosData.length ? videosData.reduce((s: number, v: APIVideoEntry) => s + parseFloat(v.engagementRate || '0'), 0) / videosData.length : 1;
 
-    const videos: VideoData[] = videosData.map((v: any) => {
+    const videos: VideoData[] = videosData.map((v: APIVideoEntry) => {
       const views = parseInt(v.viewCount);
       const likes = parseInt(v.likeCount);
       const comments = parseInt(v.commentCount);
@@ -258,6 +260,7 @@ function DashboardContent() {
       viewsChartInstance.current?.destroy();
       engChartInstance.current?.destroy();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appData, loading]);
 
   function renderCharts() {
@@ -294,7 +297,7 @@ function DashboardContent() {
               legend: { display: false },
               tooltip: {
                 backgroundColor: '#1A1714', titleColor: '#F7F5F0', bodyColor: '#F7F5F0',
-                titleFont: { family: 'Instrument Sans', size: 12, weight: 600 as any },
+                titleFont: { family: 'Instrument Sans', size: 12, weight: 600 },
                 bodyFont: { family: 'DM Mono', size: 12 },
                 padding: 12, cornerRadius: 6,
                 callbacks: {
@@ -305,7 +308,7 @@ function DashboardContent() {
             },
             scales: {
               x: { grid: { color: 'rgba(26,23,20,0.04)' }, ticks: { display: false }, border: { color: '#E2DDD6' } },
-              y: { grid: { color: 'rgba(26,23,20,0.06)' }, ticks: { color: '#A39E99', font: { family: 'DM Mono', size: 10 }, callback: (v: any) => formatNumber(v) }, border: { display: false } }
+              y: { grid: { color: 'rgba(26,23,20,0.06)' }, ticks: { color: '#A39E99', font: { family: 'DM Mono', size: 10 }, callback: (v: string | number) => formatNumber(Number(v)) }, border: { display: false } }
             },
             animation: { duration: 800, easing: 'easeOutQuart' }
           }
@@ -332,7 +335,7 @@ function DashboardContent() {
           options: {
             responsive: true, maintainAspectRatio: false, cutout: '68%',
             plugins: {
-              legend: { position: 'bottom', labels: { color: '#6B6560', font: { family: 'Instrument Sans', size: 12, weight: 500 as any }, padding: 16, usePointStyle: true, pointStyleWidth: 8 } },
+              legend: { position: 'bottom', labels: { color: '#6B6560', font: { family: 'Instrument Sans', size: 12, weight: 500 }, padding: 16, usePointStyle: true, pointStyleWidth: 8 } },
               tooltip: { backgroundColor: '#1A1714', titleColor: '#F7F5F0', bodyColor: '#F7F5F0', bodyFont: { family: 'DM Mono', size: 12 }, padding: 12, cornerRadius: 6 }
             },
             animation: { animateRotate: true, duration: 1000, easing: 'easeOutQuart' }
@@ -370,7 +373,7 @@ function DashboardContent() {
   const getFilteredVideos = useCallback(() => {
     if (!appData) return [];
     const now = Date.now();
-    let filtered = appData.videos.filter(v => {
+    const filtered = appData.videos.filter(v => {
       if (searchQ && !v.title.toLowerCase().includes(searchQ.toLowerCase())) return false;
       if (dateFilter !== 'all') {
         const days = parseInt(dateFilter);
@@ -598,16 +601,10 @@ function DashboardContent() {
             </div>
           </div>
           <div className="dash-nav-right">
-            <ShinyButton 
-              className="bg-[var(--color-primary)] text-white hover:bg-[#c23714] !px-4 !py-1.5" 
-              onClick={exportCSV}
-            >
-              ⬇ CSV 
+            <ShinyButton onClick={exportCSV}>
+              ⬇ CSV
             </ShinyButton>
-            <ShinyButton 
-              className="bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-background)] !px-4 !py-1.5" 
-              onClick={() => { navigator.clipboard?.writeText(window.location.href); showToast('✓ Link copied'); }}
-            >
+            <ShinyButton onClick={() => { navigator.clipboard?.writeText(window.location.href); showToast('✓ Link copied'); }}>
               🔗 Copy Link
             </ShinyButton>
           </div>
@@ -769,7 +766,7 @@ function DashboardContent() {
                 const trend = getTrendLabel(v.trendingScore);
                 return (
                   <tr key={v.id} style={{ cursor: 'pointer' }} onClick={() => setModalVideo(v)}>
-                    <td><img className="table-thumb" src={v.thumbnail} loading="lazy" /></td>
+                    <td><img className="table-thumb" src={v.thumbnail} alt={v.title} loading="lazy" /></td>
                     <td><span className="table-title">{v.title}</span></td>
                     <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{timeAgo(v.publishedAt)}</td>
                     <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{formatNumber(v.views)}</td>

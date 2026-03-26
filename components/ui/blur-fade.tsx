@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useRef } from "react";
 import { AnimatePresence, motion, useInView, Variants } from "framer-motion";
 

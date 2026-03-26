@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef } from 'react';
 
 export function Hero3D() {
@@ -17,11 +18,12 @@ export function Hero3D() {
     };
 
     let renderer: any, scene: any, camera: any, barGroup: any;
-    let bars: { mesh: any; targetH: number }[] = [];
+    const bars: { mesh: any; targetH: number }[] = [];
     let mouseX = 0, mouseY = 0;
     let heroAnimStart = 0;
 
     function initScene() {
+      if (!canvas) return;
       const parent = canvas.parentElement;
       if (!parent) return;
       const rect = parent.getBoundingClientRect();
