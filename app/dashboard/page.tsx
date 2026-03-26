@@ -296,8 +296,6 @@ function DashboardContent() {
               hoverBackgroundColor: '#C23510',
               hoverBorderWidth: 4,
               hoverBorderColor: 'rgba(0,0,0,0.1)',
-              hoverRadius: 8,
-              hitRadius: 10,
               borderRadius: 3,
               borderSkipped: false,
             }]
