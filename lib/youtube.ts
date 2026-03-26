@@ -118,7 +118,7 @@ export async function fetchChannelDetails(url: string): Promise<ChannelInfo> {
   };
 }
 
-export async function fetchRecentVideos(channelId: string, maxResults: number = 50): Promise<VideoStats[]> {
+export async function fetchRecentVideos(channelId: string, maxResults: number = 200): Promise<VideoStats[]> {
   if (!API_KEY) {
     throw new Error('API_KEY missing');
   }
@@ -127,30 +127,59 @@ export async function fetchRecentVideos(channelId: string, maxResults: number = 
   // First, we need the uploads playlist ID (which is usually replacing 'UC' with 'UU' in channel ID)
   const uploadsPlaylistId = channelId.replace(/^UC/, 'UU');
 
-  const playlistUrl = `${BASE_URL}/playlistItems?part=snippet,contentDetails&playlistId=${uploadsPlaylistId}&maxResults=${maxResults}&key=${API_KEY}`;
-  
-  const plRes = await fetch(playlistUrl, { next: { revalidate: 3600 } });
-  if (!plRes.ok) {
-    if (plRes.status === 403) throw new Error('QUOTA_EXCEEDED');
-    throw new Error('Failed to fetch videos');
+  let allPlaylistItems: any[] = [];
+  let nextPageToken: string | undefined = undefined;
+
+  // Fetch up to maxResults videos
+  while (allPlaylistItems.length < maxResults) {
+    const limit = Math.min(50, maxResults - allPlaylistItems.length);
+    let playlistUrl = `${BASE_URL}/playlistItems?part=snippet,contentDetails&playlistId=${uploadsPlaylistId}&maxResults=${limit}&key=${API_KEY}`;
+    if (nextPageToken) {
+      playlistUrl += `&pageToken=${nextPageToken}`;
+    }
+    
+    const plRes = await fetch(playlistUrl, { next: { revalidate: 3600 } });
+    if (!plRes.ok) {
+      if (plRes.status === 403) throw new Error('QUOTA_EXCEEDED');
+      // If we already have some items, just break and use what we have, otherwise throw
+      if (allPlaylistItems.length > 0) break;
+      throw new Error('Failed to fetch videos');
+    }
+
+    const plData = await plRes.json();
+    if (!plData.items || plData.items.length === 0) break;
+
+    allPlaylistItems = allPlaylistItems.concat(plData.items);
+    nextPageToken = plData.nextPageToken;
+
+    if (!nextPageToken) break;
   }
 
-  const plData = await plRes.json();
-  if (!plData.items || plData.items.length === 0) return [];
+  if (allPlaylistItems.length === 0) return [];
 
-  const videoIds = plData.items.map((item: any) => item.contentDetails.videoId).join(',');
-  
-  // Now fetch the stats for these specific videos
-  const statsUrl = `${BASE_URL}/videos?part=snippet,statistics,contentDetails&id=${videoIds}&key=${API_KEY}`;
-  const statsRes = await fetch(statsUrl, { next: { revalidate: 3600 } });
-  
-  if (!statsRes.ok) {
-    throw new Error('Failed to fetch video statistics');
+  // Chunk video IDs by 50 to fetch stats concurrently
+  const videoIds = allPlaylistItems.map(item => item.contentDetails.videoId);
+  const chunks: string[][] = [];
+  for (let i = 0; i < videoIds.length; i += 50) {
+    chunks.push(videoIds.slice(i, i + 50));
   }
 
-  const statsData = await statsRes.json();
+  let allStats: any[] = [];
+  const statPromises = chunks.map(async (chunk) => {
+    const statsUrl = `${BASE_URL}/videos?part=snippet,statistics,contentDetails&id=${chunk.join(',')}&key=${API_KEY}`;
+    const statsRes = await fetch(statsUrl, { next: { revalidate: 3600 } });
+    if (!statsRes.ok) {
+      if (statsRes.status === 403) throw new Error('QUOTA_EXCEEDED');
+      return [];
+    }
+    const statsData = await statsRes.json();
+    return statsData.items || [];
+  });
+
+  const statsResults = await Promise.all(statPromises);
+  allStats = statsResults.flat();
   
-  return statsData.items.map((item: any) => {
+  return allStats.map((item: any) => {
     const views = parseInt(item.statistics.viewCount || '0');
     const likes = parseInt(item.statistics.likeCount || '0');
     const comments = parseInt(item.statistics.commentCount || '0');

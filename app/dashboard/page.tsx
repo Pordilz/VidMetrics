@@ -1,9 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { formatNumber, formatDuration, timeAgo, formatDate, getTrendLabel, FLAGS, validateYouTubeURL } from '@/lib/formatters';
 import { Chart, registerables } from 'chart.js';
+import NumberTicker from '@/components/ui/number-ticker';
+import { SpotlightCard } from '@/components/ui/spotlight-card';
+import BlurFade from '@/components/ui/blur-fade';
+import ShinyButton from '@/components/ui/shiny-button';
 
 Chart.register(...registerables);
 
@@ -87,7 +91,7 @@ function generateDemoData(query: string): AppData {
   };
 
   const videos: VideoData[] = [];
-  const numVideos = 40 + Math.floor(Math.random() * 20);
+  const numVideos = 150 + Math.floor(Math.random() * 50);
   const now = Date.now();
   const shuffled = [...VIDEO_TITLES].sort(() => Math.random() - 0.5);
 
@@ -417,11 +421,11 @@ function DashboardContent() {
     const cadence = weeks.size ? (videos.length / weeks.size).toFixed(1) : '0';
 
     return [
-      { label: 'Views (30 Days)', value: formatNumber(totalViews30), trend: 'up', trendVal: '+12.4%' },
-      { label: 'Avg Views / Video', value: formatNumber(avgViews), trend: 'neutral', trendVal: '~steady' },
-      { label: 'Top Video Views', value: formatNumber(topVideo?.views || 0), sub: topVideo ? topVideo.title.slice(0, 30) + '…' : '' },
-      { label: 'Avg Engagement', value: avgEng + '%', trend: 'up', trendVal: '+0.3%' },
-      { label: 'Cadence', value: cadence + '/wk', sub: `${last30.length} videos this month` },
+      { label: 'Views (30 Days)', value: totalViews30, format: 'number', trend: 'up', trendVal: '+12.4%' },
+      { label: 'Avg Views / Video', value: avgViews, format: 'number', trend: 'neutral', trendVal: '~steady' },
+      { label: 'Top Video Views', value: topVideo?.views || 0, format: 'number', sub: topVideo ? topVideo.title.slice(0, 30) + '…' : '' },
+      { label: 'Avg Engagement', value: parseFloat(avgEng), format: 'percent', trend: 'up', trendVal: '+0.3%' },
+      { label: 'Cadence', value: parseFloat(cadence), format: 'rate', sub: `${last30.length} videos this month` },
     ];
   };
 
@@ -440,13 +444,20 @@ function DashboardContent() {
       dayCounts[d] = (dayCounts[d] || 0) + 1;
     });
     let bestDay = 0, bestAvg = 0;
-    for (let d = 0; d < 7; d++) {
-      const avg = dayCounts[d] ? dayViews[d] / dayCounts[d] : 0;
+    
+    // Ignore days with statistically insignificant upload counts to avoid "1 viral video" outliers
+    const threshold = Math.max(2, Math.floor(videos.length * 0.05));
+    let validDays = Object.keys(dayCounts).map(Number).filter(d => dayCounts[d] >= threshold);
+    if (validDays.length === 0) validDays = Object.keys(dayCounts).map(Number); // fallback
+    
+    validDays.forEach(d => {
+      const avg = dayViews[d] / dayCounts[d];
       if (avg > bestAvg) { bestAvg = avg; bestDay = d; }
-    }
-    const validAvgs = Object.keys(dayCounts).map(d => dayViews[Number(d)] / dayCounts[Number(d)]).filter(Boolean);
+    });
+    
+    const validAvgs = validDays.map(d => dayViews[d] / dayCounts[d]);
     const worstAvg = validAvgs.length ? Math.min(...validAvgs) : 0;
-    const dayLift = worstAvg ? Math.round((bestAvg / worstAvg - 1) * 100) : 0;
+    const dayLift = worstAvg && bestAvg > worstAvg ? Math.round((bestAvg / worstAvg - 1) * 100) : 0;
     insights.push({ type: 'info', icon: '📅', title: `Best day to post: ${dayNames[bestDay]}`, body: `Videos published on ${dayNames[bestDay]} average <span class="insight-stat">${dayLift}% more views</span> than the lowest performing day.` });
 
     const buckets: Record<string, number[]> = { short: [], mid: [], long: [] };
@@ -457,10 +468,17 @@ function DashboardContent() {
     });
     const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
     const avgS = avg(buckets.short), avgM = avg(buckets.mid), avgL = avg(buckets.long);
-    const bestLength = avgM >= avgS && avgM >= avgL ? '8–15 minutes' : avgS >= avgL ? 'under 8 minutes' : '15+ minutes';
-    const maxLen = Math.max(avgS, avgM, avgL);
-    const minLen = Math.min(avgS || Infinity, avgM || Infinity, avgL || Infinity);
-    const lenMult = minLen && minLen !== Infinity ? (maxLen / minLen).toFixed(1) : '?';
+    const avgsList = [avgS, avgM, avgL].filter(a => a > 0);
+    const maxLen = avgsList.length ? Math.max(...avgsList) : 0;
+    const minLen = avgsList.length ? Math.min(...avgsList) : 0;
+    
+    let bestLength = 'any length';
+    if (maxLen > 0) {
+      if (maxLen === avgM) bestLength = '8–15 minutes';
+      else if (maxLen === avgS) bestLength = 'under 8 minutes';
+      else bestLength = '15+ minutes';
+    }
+    const lenMult = minLen > 0 ? (maxLen / minLen).toFixed(1) : '1.0';
     insights.push({ type: 'opportunity', icon: '🎯', title: `Sweet spot duration: ${bestLength}`, body: `Videos in the ${bestLength} range average <span class="insight-stat">${lenMult}× more views</span> than other lengths.` });
 
     const last7 = videos.filter(v => (now - new Date(v.publishedAt).getTime()) < 7 * 86400000).length;
@@ -486,27 +504,46 @@ function DashboardContent() {
     if (!appData) return null;
     const { videos } = appData;
     const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    const now = new Date();
+    const today = new Date();
+    
     const dayCounts: Record<string, number> = {};
     videos.forEach(v => {
-      const key = new Date(v.publishedAt).toISOString().slice(0, 10);
+      const d = new Date(v.publishedAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       dayCounts[key] = (dayCounts[key] || 0) + 1;
     });
+
+    // Calculate the Sunday of the current week (end of the calendar grid)
+    const currentDay = today.getDay(); // 0 = Sun, 1 = Mon, ...
+    const daysUntilSunday = currentDay === 0 ? 0 : 7 - currentDay;
+    const endOfCalendar = new Date(today);
+    endOfCalendar.setDate(today.getDate() + daysUntilSunday);
 
     const weeks = [];
     for (let w = 51; w >= 0; w--) {
       const cells = [];
       for (let d = 0; d < 7; d++) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - (w * 7 + (6 - d)));
-        const key = date.toISOString().slice(0, 10);
+        const date = new Date(endOfCalendar);
+        date.setDate(endOfCalendar.getDate() - (w * 7 + (6 - d)));
+        
+        if (date > today) {
+          cells.push(<div key={`${w}-${d}`} className="heatmap-cell" title="Future date" />);
+          continue;
+        }
+
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
         const count = dayCounts[key] || 0;
         let cls = '';
         if (count === 1) cls = 'l1';
         else if (count === 2) cls = 'l2';
         else if (count === 3) cls = 'l3';
         else if (count >= 4) cls = 'l4';
-        cells.push(<div key={`${w}-${d}`} className={`heatmap-cell ${cls}`} title={`${key}: ${count} video${count !== 1 ? 's' : ''}`} />);
+        
+        const titleContent = count > 0 
+          ? `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}: ${count} video${count !== 1 ? 's' : ''}` 
+          : `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}: No videos`;
+
+        cells.push(<div key={`${w}-${d}`} className={`heatmap-cell ${cls}`} title={titleContent} />);
       }
       weeks.push(<div key={w} className="heatmap-col">{cells}</div>);
     }
@@ -561,8 +598,18 @@ function DashboardContent() {
             </div>
           </div>
           <div className="dash-nav-right">
-            <button className="export-btn" onClick={exportCSV}>⬇ CSV</button>
-            <button className="export-btn" onClick={() => { navigator.clipboard?.writeText(window.location.href); showToast('✓ Link copied'); }}>🔗 Copy Link</button>
+            <ShinyButton 
+              className="bg-[var(--color-primary)] text-white hover:bg-[#c23714] !px-4 !py-1.5" 
+              onClick={exportCSV}
+            >
+              ⬇ CSV 
+            </ShinyButton>
+            <ShinyButton 
+              className="bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-background)] !px-4 !py-1.5" 
+              onClick={() => { navigator.clipboard?.writeText(window.location.href); showToast('✓ Link copied'); }}
+            >
+              🔗 Copy Link
+            </ShinyButton>
           </div>
         </div>
       </nav>
@@ -591,12 +638,26 @@ function DashboardContent() {
       {/* KPIs */}
       <div className="kpi-grid">
         {kpis.map((k, i) => (
-          <div key={i} className="kpi-card revealed" style={{ transitionDelay: `${i * 0.08}s` }}>
-            <div className="kpi-label">{k.label}</div>
-            <div className="kpi-value">{k.value}</div>
-            {k.trend && <div className={`kpi-trend ${k.trend}`}>{k.trend === 'up' ? '↑' : k.trend === 'down' ? '↓' : '→'} {k.trendVal}</div>}
-            {k.sub && <div className="kpi-sub">{k.sub}</div>}
-          </div>
+          <BlurFade key={i} delay={0.1 + i * 0.05} inView>
+            <SpotlightCard className="kpi-card !border-0" spotlightColor="rgba(232, 68, 26, 0.05)">
+              <div className="kpi-label">{k.label}</div>
+              <div className="kpi-value relative">
+                {k.format === 'number' && k.value >= 1000000 ? (
+                  <><NumberTicker value={k.value / 1000000} decimalPlaces={1} />M</>
+                ) : k.format === 'number' && k.value >= 1000 ? (
+                  <><NumberTicker value={k.value / 1000} decimalPlaces={1} />K</>
+                ) : k.format === 'number' ? (
+                  <NumberTicker value={k.value as number} />
+                ) : k.format === 'percent' ? (
+                  <><NumberTicker value={k.value as number} decimalPlaces={2} />%</>
+                ) : (
+                  <><NumberTicker value={k.value as number} decimalPlaces={1} />/wk</>
+                )}
+              </div>
+              {k.trend && <div className={`kpi-trend ${k.trend}`}>{k.trend === 'up' ? '↑' : k.trend === 'down' ? '↓' : '→'} {k.trendVal}</div>}
+              {k.sub && <div className="kpi-sub">{k.sub}</div>}
+            </SpotlightCard>
+          </BlurFade>
         ))}
       </div>
 
@@ -630,11 +691,13 @@ function DashboardContent() {
         </div>
         <div className="insights-grid">
           {insights.map((ins, i) => (
-            <div key={i} className={`insight-card type-${ins.type}`}>
-              <div className="insight-icon">{ins.icon}</div>
-              <div className="insight-title">{ins.title}</div>
-              <div className="insight-body" dangerouslySetInnerHTML={{ __html: ins.body }} />
-            </div>
+            <BlurFade key={i} delay={0.2 + i * 0.1} inView>
+              <div className={`insight-card type-${ins.type}`}>
+                <div className="insight-icon">{ins.icon}</div>
+                <div className="insight-title">{ins.title}</div>
+                <div className="insight-body" dangerouslySetInnerHTML={{ __html: ins.body }} />
+              </div>
+            </BlurFade>
           ))}
         </div>
       </div>
