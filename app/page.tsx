@@ -1,101 +1,207 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useState, useEffect } from 'react';
+import { differenceInDays, isSameMonth } from 'date-fns';
+import { ChannelSearch } from '@/components/dashboard/ChannelSearch';
+import { ChannelCard } from '@/components/dashboard/ChannelCard';
+import { VideoTable } from '@/components/dashboard/VideoTable';
+import { VideoChart } from '@/components/dashboard/VideoChart';
+import { StatsFilters, SortOption, DateFilterOption } from '@/components/dashboard/StatsFilters';
+import { HistoryChips } from '@/components/dashboard/HistoryChips';
+import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
+import { ChannelInfo, VideoStats } from '@/lib/youtube';
+import { Button } from '@/components/ui/button';
+import { AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+export default function Dashboard() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [channel, setChannel] = useState<ChannelInfo | null>(null);
+  const [videos, setVideos] = useState<VideoStats[]>([]);
+  const [filteredVideos, setFilteredVideos] = useState<VideoStats[]>([]);
+  
+  const [sortOption, setSortOption] = useState<SortOption>('viewsDesc');
+  const [dateFilter, setDateFilter] = useState<DateFilterOption>('all');
+  const [history, setHistory] = useState<string[]>([]);
+
+  // Load history from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('vidmetrics_history');
+      if (stored) {
+        setHistory(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error('Failed to load history', e);
+    }
+  }, []);
+
+  // Save history to localStorage
+  const saveToHistory = (url: string) => {
+    const newHistory = [url, ...history.filter(h => h !== url)].slice(0, 5);
+    setHistory(newHistory);
+    try {
+      localStorage.setItem('vidmetrics_history', JSON.stringify(newHistory));
+    } catch (e) {
+      console.error('Failed to save history', e);
+    }
+  };
+
+  const handleSearch = async (url: string, isDemo = false) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // 1. Fetch channel
+      const channelRes = await fetch(`/api/channel?${isDemo ? 'demo=true' : `url=${encodeURIComponent(url)}`}`);
+      const channelData = await channelRes.json();
+      
+      if (!channelRes.ok) {
+        throw new Error(channelData.error || 'Failed to fetch channel');
+      }
+
+      setChannel(channelData);
+
+      // 2. Fetch videos
+      const videosRes = await fetch(`/api/videos?${isDemo ? 'demo=true' : `channelId=${encodeURIComponent(channelData.id)}`}`);
+      const videosData = await videosRes.json();
+      
+      if (!videosRes.ok) {
+        throw new Error(videosData.error || 'Failed to fetch videos');
+      }
+
+      setVideos(videosData);
+      
+      // Keep track of search if not a demo
+      if (!isDemo) {
+        saveToHistory(url);
+      }
+      
+      // Reset filters when new channel loaded
+      setSortOption('viewsDesc');
+      setDateFilter('all');
+    } catch (err: any) {
+      setError(err.message || 'An unknown error occurred');
+      setChannel(null);
+      setVideos([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Apply filtering and sorting whenever videos, sortOption, or dateFilter change
+  useEffect(() => {
+    let result = [...videos];
+
+    // 1. Filter by Date
+    if (dateFilter !== 'all') {
+      const now = new Date();
+      result = result.filter(video => {
+        const pubDate = new Date(video.publishedAt);
+        if (dateFilter === 'thisMonth') {
+          return isSameMonth(now, pubDate);
+        } else if (dateFilter === '30days') {
+          return differenceInDays(now, pubDate) <= 30;
+        } else if (dateFilter === '90days') {
+          return differenceInDays(now, pubDate) <= 90;
+        }
+        return true;
+      });
+    }
+
+    // 2. Sort Data
+    result.sort((a, b) => {
+      switch (sortOption) {
+        case 'viewsDesc':
+          return parseInt(b.viewCount) - parseInt(a.viewCount);
+        case 'likesDesc':
+          return parseInt(b.likeCount) - parseInt(a.likeCount);
+        case 'dateDesc':
+          return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+        case 'dateAsc':
+          return new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime();
+        default:
+          return 0;
+      }
+    });
+
+    setFilteredVideos(result);
+  }, [videos, sortOption, dateFilter]);
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen bg-slate-50 dark:bg-black/95 p-4 sm:p-8 pt-12">
+      <div className="max-w-7xl mx-auto space-y-8">
+        
+        {/* Header Section */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+              <span className="text-[#3B82F6]">Vid</span>Metrics
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1 font-medium">YouTube Competitor Analysis Dashboard</p>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full lg:w-auto">
+            <ChannelSearch onSearch={(url) => handleSearch(url, false)} isLoading={loading} />
+            <Button variant="outline" onClick={() => handleSearch('demo', true)} disabled={loading} className="shrink-0">
+              Load Demo
+            </Button>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Search History */}
+        {!channel && !loading && (
+          <HistoryChips history={history} onSelect={(url) => handleSearch(url, false)} />
+        )}
+
+        {/* Error State */}
+        {error && (
+          <Alert variant="destructive" className="max-w-2xl animate-in fade-in zoom-in-95">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Analysis Failed</AlertTitle>
+            <AlertDescription>
+              {error}
+              {error.includes('quota') && (
+                <div className="mt-2 text-sm">
+                  YouTube API limits reached. Try again tomorrow or use the Demo Mode.
+                </div>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Loading State */}
+        {loading && <DashboardSkeleton />}
+
+        {/* Content Area */}
+        {channel && !loading && !error && (
+          <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <ChannelCard channel={channel} />
+            
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <h3 className="text-2xl font-semibold tracking-tight">Performance Analytics</h3>
+                <StatsFilters 
+                  sortOption={sortOption} setSortOption={setSortOption} 
+                  dateFilter={dateFilter} setDateFilter={setDateFilter} 
+                />
+              </div>
+
+              <div className="grid xl:grid-cols-[1fr_400px] gap-8">
+                {/* Table spans more space if needed, or Chart sits alongside */}
+                <div className="overflow-hidden">
+                   <VideoTable videos={filteredVideos} allVideos={videos} />
+                </div>
+                
+                <div className="w-full xl:w-[400px]">
+                  {/* The chart always uses the top 10 from filtered list if available */}
+                  <VideoChart videos={filteredVideos} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
