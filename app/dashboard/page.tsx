@@ -572,10 +572,9 @@ function DashboardContent() {
         <div className="channel-info">
           <div className="channel-avatar">
             {appData.channel.thumbnail ? (
-              <img src={appData.channel.thumbnail} alt={appData.channel.name} />
-            ) : (
-              <div className="channel-avatar-placeholder">{appData.channel.name.charAt(0)}</div>
-            )}
+              <img src={appData.channel.thumbnail} alt={appData.channel.name} referrerPolicy="no-referrer" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden-placeholder'); }} />
+            ) : null}
+            <div className={`channel-avatar-placeholder ${appData.channel.thumbnail ? 'hidden-placeholder' : ''}`} style={appData.channel.thumbnail ? { display: 'none' } : {}}>{appData.channel.name.charAt(0)}</div>
           </div>
           <div className="channel-meta">
             <h1>{appData.channel.name} {appData.channel.verified && <span className="verified-badge">✓</span>}</h1>

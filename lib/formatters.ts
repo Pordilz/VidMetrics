@@ -36,8 +36,17 @@ export function getTrendLabel(score: number): { label: string; cls: string } {
 }
 
 export const FLAGS: Record<string, string> = {
-  US: '🇺🇸', UK: '🇬🇧', CA: '🇨🇦', AU: '🇦🇺', DE: '🇩🇪',
-  JP: '🇯🇵', KR: '🇰🇷', BR: '🇧🇷', IN: '🇮🇳', FR: '🇫🇷'
+  US: '🇺🇸', GB: '🇬🇧', UK: '🇬🇧', CA: '🇨🇦', AU: '🇦🇺', DE: '🇩🇪',
+  JP: '🇯🇵', KR: '🇰🇷', BR: '🇧🇷', IN: '🇮🇳', FR: '🇫🇷',
+  MX: '🇲🇽', ES: '🇪🇸', IT: '🇮🇹', NL: '🇳🇱', SE: '🇸🇪',
+  NO: '🇳🇴', DK: '🇩🇰', FI: '🇫🇮', PL: '🇵🇱', RU: '🇷🇺',
+  TR: '🇹🇷', SA: '🇸🇦', AE: '🇦🇪', EG: '🇪🇬', ZA: '🇿🇦',
+  NG: '🇳🇬', KE: '🇰🇪', PH: '🇵🇭', ID: '🇮🇩', TH: '🇹🇭',
+  VN: '🇻🇳', MY: '🇲🇾', SG: '🇸🇬', TW: '🇹🇼', HK: '🇭🇰',
+  PK: '🇵🇰', BD: '🇧🇩', AR: '🇦🇷', CL: '🇨🇱', CO: '🇨🇴',
+  PE: '🇵🇪', PT: '🇵🇹', IE: '🇮🇪', AT: '🇦🇹', CH: '🇨🇭',
+  BE: '🇧🇪', NZ: '🇳🇿', RO: '🇷🇴', UA: '🇺🇦', CZ: '🇨🇿',
+  GR: '🇬🇷', HU: '🇭🇺', IL: '🇮🇱', JO: '🇯🇴', LB: '🇱🇧',
 };
 
 export function validateYouTubeURL(input: string): boolean {
