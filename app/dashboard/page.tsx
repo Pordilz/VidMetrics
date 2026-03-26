@@ -137,6 +137,14 @@ function generateDemoData(query: string): AppData {
   return { channel: base, videos };
 }
 
+// ===== Parse ISO 8601 duration (PT1H2M3S) to seconds =====
+function parseDuration(iso: string): number {
+  if (!iso) return 0;
+  const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 0;
+  return (parseInt(match[1] || '0') * 3600) + (parseInt(match[2] || '0') * 60) + parseInt(match[3] || '0');
+}
+
 // ===== TRY TO FETCH FROM REAL API, FALLBACK TO DEMO =====
 async function fetchChannelData(query: string): Promise<AppData> {
   try {
@@ -163,10 +171,10 @@ async function fetchChannelData(query: string): Promise<AppData> {
       name: channelData.title,
       subs: formatNumber(parseInt(channelData.statistics.subscriberCount)),
       videos: parseInt(channelData.statistics.videoCount),
-      country: 'US',
+      country: channelData.country || '',
       created: channelData.publishedAt,
-      verified: true,
-      thumbnail: channelData.thumbnails?.high?.url || channelData.thumbnails?.default?.url,
+      verified: parseInt(channelData.statistics.subscriberCount) > 100000,
+      thumbnail: channelData.thumbnails?.high?.url || channelData.thumbnails?.medium?.url || channelData.thumbnails?.default?.url,
     };
 
     const now = Date.now();
@@ -189,10 +197,10 @@ async function fetchChannelData(query: string): Promise<AppData> {
         title: v.title,
         publishedAt: v.publishedAt,
         views, likes, comments,
-        duration: Math.floor(Math.random() * 1800 + 120),
+        duration: v.duration ? parseDuration(v.duration) : Math.floor(Math.random() * 1800 + 120),
         engagementRate, trendingScore,
         thumbnail: v.thumbnails?.high?.url || v.thumbnails?.medium?.url || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
-        tags: ['youtube'],
+        tags: v.tags?.slice(0, 5) || ['youtube'],
       };
     });
 
@@ -574,7 +582,7 @@ function DashboardContent() {
             <div className="channel-stats">
               <span className="channel-stat"><strong>{appData.channel.subs}</strong> subscribers</span>
               <span className="channel-stat"><strong>{appData.channel.videos.toLocaleString()}</strong> videos</span>
-              <span className="channel-stat">{FLAGS[appData.channel.country] || '🌐'} {appData.channel.country}</span>
+              {appData.channel.country && <span className="channel-stat">{FLAGS[appData.channel.country] || '🌐'} {appData.channel.country}</span>}
               <span className="channel-stat">Since {formatDate(appData.channel.created)}</span>
             </div>
           </div>

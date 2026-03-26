@@ -8,6 +8,7 @@ export interface ChannelInfo {
   description: string;
   customUrl: string;
   publishedAt: string;
+  country: string;
   thumbnails: {
     default: { url: string };
     medium: { url: string };
@@ -30,7 +31,9 @@ export interface VideoStats {
   viewCount: string;
   likeCount: string;
   commentCount: string;
-  engagementRate?: string; // Calculated
+  engagementRate?: string;
+  duration?: string;
+  tags?: string[];
 }
 
 /**
@@ -109,12 +112,13 @@ export async function fetchChannelDetails(url: string): Promise<ChannelInfo> {
     description: item.snippet.description,
     customUrl: item.snippet.customUrl,
     publishedAt: item.snippet.publishedAt,
+    country: item.snippet.country || '',
     thumbnails: item.snippet.thumbnails,
     statistics: item.statistics,
   };
 }
 
-export async function fetchRecentVideos(channelId: string, maxResults: number = 20): Promise<VideoStats[]> {
+export async function fetchRecentVideos(channelId: string, maxResults: number = 50): Promise<VideoStats[]> {
   if (!API_KEY) {
     throw new Error('API_KEY missing');
   }
@@ -137,7 +141,7 @@ export async function fetchRecentVideos(channelId: string, maxResults: number = 
   const videoIds = plData.items.map((item: any) => item.contentDetails.videoId).join(',');
   
   // Now fetch the stats for these specific videos
-  const statsUrl = `${BASE_URL}/videos?part=snippet,statistics&id=${videoIds}&key=${API_KEY}`;
+  const statsUrl = `${BASE_URL}/videos?part=snippet,statistics,contentDetails&id=${videoIds}&key=${API_KEY}`;
   const statsRes = await fetch(statsUrl, { next: { revalidate: 3600 } });
   
   if (!statsRes.ok) {
@@ -164,6 +168,8 @@ export async function fetchRecentVideos(channelId: string, maxResults: number = 
       likeCount: item.statistics.likeCount || '0',
       commentCount: item.statistics.commentCount || '0',
       engagementRate: engagementRate.toFixed(2),
+      duration: item.contentDetails?.duration || '',
+      tags: item.snippet.tags || [],
     };
   });
 }
