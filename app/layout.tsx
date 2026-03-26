@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
-
 export const metadata: Metadata = {
-  title: "VidMetrics",
-  description: "YouTube Competitor Analysis Dashboard",
+  title: "VidMetrics — Competitive YouTube Intelligence",
+  description: "Paste any YouTube channel URL. Get instant competitive intelligence — trending scores, engagement analytics, and AI-powered publishing insights.",
 };
 
 export default function RootLayout({
@@ -15,10 +12,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.className} min-h-screen bg-background font-sans antialiased`} >
-        {children}
-      </body>
+    <html lang="en">
+      <body>{children}</body>
     </html>
   );
 }

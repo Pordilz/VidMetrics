@@ -1,15 +1,9 @@
 import { NextResponse } from 'next/server';
 import { fetchChannelDetails } from '@/lib/youtube';
-import { demoChannel } from '@/lib/demoData';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const url = searchParams.get('url');
-  const demo = searchParams.get('demo');
-
-  if (demo === 'true') {
-    return NextResponse.json(demoChannel);
-  }
 
   if (!url) {
     return NextResponse.json({ error: 'URL parameter is required' }, { status: 400 });
