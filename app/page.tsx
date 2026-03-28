@@ -72,7 +72,7 @@ export default function LandingPage() {
             Know exactly<br />what&apos;s <span className="accent">winning.</span>
           </h1>
           <p className="hero-sub">
-            Paste any YouTube channel URL. Get instant competitive intelligence — trending scores, engagement analytics, and AI-powered publishing insights.
+            Paste any YouTube channel URL. Get instant competitive intelligence with trending scores, engagement analytics, and basic publishing insights.
           </p>
 
           <div className="search-container">

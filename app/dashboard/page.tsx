@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { formatNumber, formatDuration, timeAgo, formatDate, getTrendLabel } from '@/lib/formatters';
 /* eslint-disable @next/next/no-img-element */
 import { Chart, registerables } from 'chart.js';
+import { ArrowLeft, ChevronDown, Download, Info, Link2 } from 'lucide-react';
 import NumberTicker from '@/components/ui/number-ticker';
 import { SpotlightCard } from '@/components/ui/spotlight-card';
 import BlurFade from '@/components/ui/blur-fade';
@@ -44,6 +45,32 @@ interface AppData {
   channel: ChannelData;
   videos: VideoData[];
   isDemo?: boolean;
+}
+
+interface HeatmapDayDetail {
+  dateLabel: string;
+  summary: string;
+  count: number;
+}
+
+interface HeatmapTooltipState {
+  text: string;
+  left: number;
+  top: number;
+  placement: 'top' | 'bottom';
+}
+
+type KPIFormat = 'number' | 'percent' | 'rate';
+
+interface KPIItem {
+  id: string;
+  label: string;
+  value: number;
+  format: KPIFormat;
+  trend?: 'up' | 'down' | 'neutral';
+  trendVal?: string;
+  sub?: string;
+  details?: string[];
 }
 
 
@@ -176,8 +203,14 @@ function DashboardContent() {
   const engChartRef = useRef<HTMLCanvasElement>(null);
   const viewsChartInstance = useRef<Chart | null>(null);
   const engChartInstance = useRef<Chart | null>(null);
+  const heatmapCardRef = useRef<HTMLDivElement>(null);
 
   const perPage = 12;
+  const [isMobile, setIsMobile] = useState(false);
+  const [selectedHeatmapDay, setSelectedHeatmapDay] = useState<HeatmapDayDetail | null>(null);
+  const [heatmapTooltip, setHeatmapTooltip] = useState<HeatmapTooltipState | null>(null);
+  const [expandedKpi, setExpandedKpi] = useState<string | null>(null);
+  const [showTrendingInfo, setShowTrendingInfo] = useState(false);
 
   useEffect(() => {
     if (query) {
@@ -194,6 +227,16 @@ function DashboardContent() {
     }
   }, [query]);
 
+  useEffect(() => {
+    const syncViewport = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+
+    syncViewport();
+    window.addEventListener('resize', syncViewport);
+    return () => window.removeEventListener('resize', syncViewport);
+  }, []);
+
 
   // Render charts when data loads
   useEffect(() => {
@@ -204,7 +247,7 @@ function DashboardContent() {
       engChartInstance.current?.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appData, loading]);
+  }, [appData, loading, isMobile]);
 
   function renderCharts() {
     if (!appData) return;
@@ -214,7 +257,7 @@ function DashboardContent() {
     viewsChartInstance.current?.destroy();
     engChartInstance.current?.destroy();
 
-    if (viewsChartRef.current) {
+    if (!isMobile && viewsChartRef.current) {
       const ctx = viewsChartRef.current.getContext('2d');
       if (ctx) {
         const maxViews = Math.max(...sorted.map(v => v.views));
@@ -307,6 +350,54 @@ function DashboardContent() {
     setTimeout(() => setToasts(prev => prev.slice(1)), 2800);
   }, []);
 
+  const copyDashboardLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      showToast('✓ Link copied');
+    } catch {
+      showToast('Unable to copy link');
+    }
+  }, [showToast]);
+
+  const showHeatmapTooltip = useCallback((event: React.SyntheticEvent<HTMLElement>, detail: HeatmapDayDetail) => {
+    const cardRect = heatmapCardRef.current?.getBoundingClientRect();
+    const targetRect = event.currentTarget.getBoundingClientRect();
+
+    if (!cardRect) return;
+
+    const padding = 104;
+    const anchorLeft = targetRect.left - cardRect.left + targetRect.width / 2;
+    const placement = targetRect.top - cardRect.top < 84 ? 'bottom' : 'top';
+    const left = Math.min(Math.max(anchorLeft, padding), cardRect.width - padding);
+    const top = placement === 'top'
+      ? targetRect.top - cardRect.top - 10
+      : targetRect.bottom - cardRect.top + 10;
+
+    setHeatmapTooltip({
+      text: `${detail.dateLabel}: ${detail.summary}`,
+      left,
+      top,
+      placement,
+    });
+  }, []);
+
+  const hideHeatmapTooltip = useCallback(() => {
+    setHeatmapTooltip(null);
+  }, []);
+
+  useEffect(() => {
+    setSelectedHeatmapDay(null);
+    setHeatmapTooltip(null);
+    setExpandedKpi(null);
+    setShowTrendingInfo(false);
+  }, [appData, query]);
+
+  useEffect(() => {
+    if (isMobile) {
+      setHeatmapTooltip(null);
+    }
+  }, [isMobile]);
+
   // ===== EXPORT CSV =====
   const exportCSV = () => {
     if (!appData) return;
@@ -362,8 +453,28 @@ function DashboardContent() {
     setCurrentPage(1);
   };
 
+  const getTrendIcon = (trend: NonNullable<KPIItem['trend']>) => (
+    trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'
+  );
+
+  const getKpiDisplay = (value: number, format: KPIFormat) => {
+    if (format === 'number') {
+      if (value >= 100000000) return { numericValue: value / 1000000, suffix: 'M', decimalPlaces: 0, compact: true };
+      if (value >= 1000000) return { numericValue: value / 1000000, suffix: 'M', decimalPlaces: 1, compact: false };
+      if (value >= 100000) return { numericValue: value / 1000, suffix: 'K', decimalPlaces: 0, compact: true };
+      if (value >= 1000) return { numericValue: value / 1000, suffix: 'K', decimalPlaces: 1, compact: false };
+      return { numericValue: value, suffix: '', decimalPlaces: 0, compact: false };
+    }
+
+    if (format === 'percent') {
+      return { numericValue: value, suffix: '%', decimalPlaces: 2, compact: value >= 10 };
+    }
+
+    return { numericValue: value, suffix: '/wk', decimalPlaces: 1, compact: false };
+  };
+
   // ===== KPIs =====
-  const getKPIs = () => {
+  const getKPIs = (): KPIItem[] => {
     if (!appData) return [];
     const { videos } = appData;
     const now = Date.now();
@@ -372,20 +483,81 @@ function DashboardContent() {
     const avgViews = videos.length ? Math.round(videos.reduce((s, v) => s + v.views, 0) / videos.length) : 0;
     const topVideo = [...videos].sort((a, b) => b.views - a.views)[0];
     const avgEng = videos.length ? (videos.reduce((s, v) => s + v.engagementRate, 0) / videos.length).toFixed(2) : '0';
+    const sortedViews = [...videos].map(v => v.views).sort((a, b) => a - b);
+    const mid = Math.floor(sortedViews.length / 2);
+    const medianViews = sortedViews.length % 2 === 0
+      ? Math.round(((sortedViews[mid - 1] || 0) + (sortedViews[mid] || 0)) / 2)
+      : (sortedViews[mid] || 0);
     const weeks = new Set(videos.map(v => {
       const d = new Date(v.publishedAt);
       const start = new Date(d.getFullYear(), 0, 1);
       return d.getFullYear() + '-' + Math.ceil((d.getTime() - start.getTime()) / 604800000);
     }));
     const cadence = weeks.size ? (videos.length / weeks.size).toFixed(1) : '0';
+    const recentAvgViews = last30.length ? Math.round(totalViews30 / last30.length) : 0;
 
-    return [
-      { label: 'Views (30 Days)', value: totalViews30, format: 'number', trend: 'up', trendVal: '+12.4%' },
-      { label: 'Avg Views / Video', value: avgViews, format: 'number', trend: 'neutral', trendVal: '~steady' },
-      { label: 'Top Video Views', value: topVideo?.views || 0, format: 'number', sub: topVideo ? topVideo.title.slice(0, 30) + '…' : '' },
-      { label: 'Avg Engagement', value: parseFloat(avgEng), format: 'percent', trend: 'up', trendVal: '+0.3%' },
-      { label: 'Cadence', value: parseFloat(cadence), format: 'rate', sub: `${last30.length} videos this month` },
+    const kpis: KPIItem[] = [
+      {
+        id: 'views-30-days',
+        label: 'Views (30 Days)',
+        value: totalViews30,
+        format: 'number',
+        trend: 'up',
+        trendVal: '+12.4%',
+        details: [
+          `${last30.length} uploads contributed to this 30-day total.`,
+          `Recent uploads average ${formatNumber(recentAvgViews)} views each.`,
+        ],
+      },
+      {
+        id: 'avg-views',
+        label: 'Avg Views / Video',
+        value: avgViews,
+        format: 'number',
+        trend: 'neutral',
+        trendVal: '~steady',
+        details: [
+          `Average taken across ${videos.length.toLocaleString()} fetched videos.`,
+          `Median performance sits at ${formatNumber(medianViews)} views.`,
+        ],
+      },
+      {
+        id: 'top-video',
+        label: 'Top Video Views',
+        value: topVideo?.views || 0,
+        format: 'number',
+        sub: topVideo ? topVideo.title.slice(0, 30) + '…' : '',
+        details: topVideo ? [
+          topVideo.title,
+          `${formatNumber(topVideo.views)} views · ${timeAgo(topVideo.publishedAt)} · ${topVideo.engagementRate.toFixed(2)}% engagement`,
+        ] : ['No top video data available yet.'],
+      },
+      {
+        id: 'avg-engagement',
+        label: 'Avg Engagement',
+        value: parseFloat(avgEng),
+        format: 'percent',
+        trend: 'up',
+        trendVal: '+0.3%',
+        details: [
+          `Calculated from likes and comments relative to views across ${videos.length.toLocaleString()} videos.`,
+          'Channels often land in different healthy ranges depending on format, audience, and upload style.',
+        ],
+      },
+      {
+        id: 'cadence',
+        label: 'Cadence',
+        value: parseFloat(cadence),
+        format: 'rate',
+        sub: `${last30.length} videos this month`,
+        details: [
+          `${videos.length.toLocaleString()} uploads spread across ${weeks.size} active weeks.`,
+          `${last30.length} uploads landed in the last 30 days.`,
+        ],
+      },
     ];
+
+    return kpis;
   };
 
   // ===== INSIGHTS =====
@@ -501,15 +673,30 @@ function DashboardContent() {
         else if (count === 2) cls = 'l2';
         else if (count === 3) cls = 'l3';
         else if (count >= 4) cls = 'l4';
-        
-        const tooltipText = count > 0 
-          ? `${formatDate(date.toISOString())}: ${count} video${count !== 1 ? 's' : ''}` 
-          : `${formatDate(date.toISOString())}: No videos`;
-        
+
+        const detail = {
+          dateLabel: formatDate(date.toISOString()),
+          count,
+          summary: count > 0 ? `${count} video${count !== 1 ? 's' : ''}` : 'No videos',
+        };
+
         cells.push(
-          <div key={`${w}-${d}`} className={`heatmap-cell ${cls}`}>
-            <div className="heatmap-tooltip">{tooltipText}</div>
-          </div>
+          <button
+            key={`${w}-${d}`}
+            type="button"
+            className={`heatmap-cell ${cls} ${selectedHeatmapDay?.dateLabel === detail.dateLabel ? 'selected' : ''}`}
+            aria-label={`${detail.dateLabel}: ${detail.summary}`}
+            onMouseEnter={(event) => showHeatmapTooltip(event, detail)}
+            onFocus={(event) => showHeatmapTooltip(event, detail)}
+            onMouseLeave={hideHeatmapTooltip}
+            onBlur={hideHeatmapTooltip}
+            onClick={(event) => {
+              setSelectedHeatmapDay(detail);
+              if (!isMobile) {
+                showHeatmapTooltip(event, detail);
+              }
+            }}
+          />
         );
       }
       weeks.push(<div key={w} className="heatmap-col">{cells}</div>);
@@ -517,15 +704,39 @@ function DashboardContent() {
 
     return (
       <div className="heatmap-section">
-        <div className="heatmap-card">
+        <div className="heatmap-card" ref={heatmapCardRef}>
           <div className="chart-label">Cadence</div>
           <div className="chart-title">Publishing Calendar</div>
-          <div className="chart-subtitle" style={{ marginBottom: 16 }}>Upload frequency heatmap — last 52 weeks</div>
+          <div className="chart-subtitle" style={{ marginBottom: 16 }}>
+            {isMobile ? 'Tap a day to inspect uploads across the last 52 weeks' : 'Upload frequency heatmap — last 52 weeks'}
+          </div>
           <div className="heatmap-container">
             <div className="heatmap-days">
               {days.map(d => <span key={d} className="heatmap-day-label">{d}</span>)}
             </div>
             <div className="heatmap-grid">{weeks}</div>
+          </div>
+          {heatmapTooltip && !isMobile && (
+            <div
+              className={`heatmap-tooltip-bubble ${heatmapTooltip.placement === 'bottom' ? 'is-bottom' : ''}`}
+              style={{ left: heatmapTooltip.left, top: heatmapTooltip.top }}
+            >
+              {heatmapTooltip.text}
+            </div>
+          )}
+          <div className="heatmap-mobile-detail">
+            <div className="heatmap-mobile-detail-label">Selected Day</div>
+            {selectedHeatmapDay ? (
+              <div className="heatmap-mobile-detail-body">
+                <strong>{selectedHeatmapDay.dateLabel}</strong>
+                <span>{selectedHeatmapDay.summary}</span>
+              </div>
+            ) : (
+              <div className="heatmap-mobile-detail-body">
+                <strong>Choose any day</strong>
+                <span>Tap a cell to inspect how many uploads landed on that date.</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -565,6 +776,10 @@ function DashboardContent() {
 
   const kpis = getKPIs();
   const insights = getInsights();
+  const recentPerformanceVideos = [...appData.videos]
+    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+    .slice(0, 6);
+  const maxRecentViews = recentPerformanceVideos.reduce((max, video) => Math.max(max, video.views), 1);
   const sortOptions = [
     { key: 'date', label: 'Date' }, { key: 'views', label: 'Views' }, { key: 'likes', label: 'Likes' }, { key: 'comments', label: 'Comments' }, { key: 'engagement', label: 'Engagement' }, { key: 'trending', label: 'Trending Score' }
   ];
@@ -575,48 +790,61 @@ function DashboardContent() {
       <nav className="dash-nav">
         <div className="dash-nav-inner">
           <div className="dash-nav-left">
-            <button className="back-btn" onClick={() => router.push('/')}>← New Search</button>
+            <button className="back-btn" onClick={() => router.push('/')}>
+              <ArrowLeft size={16} />
+              <span>New Search</span>
+            </button>
+            <div className="dash-nav-divider" />
             <div className="logo" style={{ fontSize: 15 }}>
               <LogoIcon size={22} iconSize={11} />
               VidMetrics
             </div>
           </div>
-          <div className="dash-nav-right">
-            <ShinyButton onClick={exportCSV}>
-              ⬇ CSV
-            </ShinyButton>
-            <ShinyButton onClick={() => { navigator.clipboard?.writeText(window.location.href); showToast('✓ Link copied'); }}>
-              🔗 Copy Link
-            </ShinyButton>
-          </div>
+          <div className="dash-nav-label">Channel Dashboard</div>
         </div>
       </nav>
 
       {/* Channel Header */}
       <div className="channel-header">
-        <div className="channel-info">
-          <div className="channel-avatar">
-            {appData.channel.thumbnail ? (
-              <img src={appData.channel.thumbnail} alt={appData.channel.name} referrerPolicy="no-referrer" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden-placeholder'); }} />
-            ) : null}
-            <div className={`channel-avatar-placeholder ${appData.channel.thumbnail ? 'hidden-placeholder' : ''}`} style={appData.channel.thumbnail ? { display: 'none' } : {}}>{appData.channel.name.charAt(0)}</div>
-          </div>
-          <div className="channel-meta">
-            <h1 style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {appData.channel.name} {appData.channel.verified && <span className="verified-badge">✓</span>}
-              {appData.isDemo && <span className="demo-badge">Demo Data</span>}
-            </h1>
+        <div className="channel-header-top">
+          <div className="channel-info">
+            <div className="channel-avatar">
+              {appData.channel.thumbnail ? (
+                <img src={appData.channel.thumbnail} alt={appData.channel.name} referrerPolicy="no-referrer" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden-placeholder'); }} />
+              ) : null}
+              <div className={`channel-avatar-placeholder ${appData.channel.thumbnail ? 'hidden-placeholder' : ''}`} style={appData.channel.thumbnail ? { display: 'none' } : {}}>{appData.channel.name.charAt(0)}</div>
+            </div>
+            <div className="channel-meta">
+              <h1 style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {appData.channel.name} {appData.channel.verified && <span className="verified-badge">✓</span>}
+                {appData.isDemo && <span className="demo-badge">Demo Data</span>}
+              </h1>
 
-            <div className="channel-stats">
-              <span className="channel-stat"><strong>{appData.channel.subs}</strong> subscribers</span>
-              <span className="channel-stat"><strong>{appData.channel.videos.toLocaleString()}</strong> videos</span>
-              {appData.channel.country && (
-                <span className="channel-stat" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <img src={`https://flagcdn.com/w20/${appData.channel.country.toLowerCase()}.png`} width="16" alt={appData.channel.country} style={{ borderRadius: 2 }} />
-                  {appData.channel.country}
-                </span>
-              )}
-              <span className="channel-stat">Since {formatDate(appData.channel.created)}</span>
+              <div className="channel-stats">
+                <span className="channel-stat"><strong>{appData.channel.subs}</strong> subscribers</span>
+                <span className="channel-stat"><strong>{appData.channel.videos.toLocaleString()}</strong> videos</span>
+                {appData.channel.country && (
+                  <span className="channel-stat" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <img src={`https://flagcdn.com/w20/${appData.channel.country.toLowerCase()}.png`} width="16" alt={appData.channel.country} style={{ borderRadius: 2 }} />
+                    {appData.channel.country}
+                  </span>
+                )}
+                <span className="channel-stat">Since {formatDate(appData.channel.created)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="channel-actions-panel">
+            <div className="channel-actions-label">Share This Snapshot</div>
+            <div className="channel-actions">
+              <button className="channel-action-btn primary" onClick={exportCSV}>
+                <Download size={16} />
+                <span>Export CSV</span>
+              </button>
+              <button className="channel-action-btn secondary" onClick={copyDashboardLink}>
+                <Link2 size={16} />
+                <span>Copy Link</span>
+              </button>
             </div>
           </div>
         </div>
@@ -626,23 +854,45 @@ function DashboardContent() {
       <div className="kpi-grid">
         {kpis.map((k, i) => (
           <BlurFade key={i} delay={0.1 + i * 0.05} inView>
-            <SpotlightCard className="kpi-card !border-0" spotlightColor="rgba(232, 68, 26, 0.05)">
-              <div className="kpi-label">{k.label}</div>
-              <div className="kpi-value relative">
-                {k.format === 'number' && k.value >= 1000000 ? (
-                  <><NumberTicker value={k.value / 1000000} decimalPlaces={1} />M</>
-                ) : k.format === 'number' && k.value >= 1000 ? (
-                  <><NumberTicker value={k.value / 1000} decimalPlaces={1} />K</>
-                ) : k.format === 'number' ? (
-                  <NumberTicker value={k.value as number} />
-                ) : k.format === 'percent' ? (
-                  <><NumberTicker value={k.value as number} decimalPlaces={2} />%</>
-                ) : (
-                  <><NumberTicker value={k.value as number} decimalPlaces={1} />/wk</>
-                )}
-              </div>
-              {k.trend && <div className={`kpi-trend ${k.trend}`}>{k.trend === 'up' ? '↑' : k.trend === 'down' ? '↓' : '→'} {k.trendVal}</div>}
-              {k.sub && <div className="kpi-sub">{k.sub}</div>}
+            <SpotlightCard className={`kpi-card !border-0 ${expandedKpi === k.id ? 'is-expanded' : ''}`} spotlightColor="rgba(232, 68, 26, 0.05)">
+              <button
+                type="button"
+                className={`kpi-toggle ${k.details?.length ? 'is-expandable' : ''}`}
+                onClick={() => k.details?.length ? setExpandedKpi(prev => prev === k.id ? null : k.id) : undefined}
+                aria-expanded={expandedKpi === k.id}
+              >
+                <div className="kpi-topline">
+                  <div className="kpi-label">{k.label}</div>
+                  {k.details?.length ? (
+                    <span className={`kpi-expand-indicator ${expandedKpi === k.id ? 'is-open' : ''}`}>
+                      <span>Details</span>
+                      <ChevronDown size={14} />
+                    </span>
+                  ) : null}
+                </div>
+                {(() => {
+                  const display = getKpiDisplay(k.value, k.format);
+                  return (
+                    <div className={`kpi-value relative ${display.compact ? 'is-compact' : ''}`}>
+                      <NumberTicker
+                        value={display.numericValue}
+                        decimalPlaces={display.decimalPlaces}
+                        className="kpi-number-ticker"
+                      />
+                      {display.suffix ? <span className="kpi-suffix">{display.suffix}</span> : null}
+                    </div>
+                  );
+                })()}
+                {k.trend && <div className={`kpi-trend ${k.trend}`}>{getTrendIcon(k.trend)} {k.trendVal}</div>}
+                {k.sub && <div className="kpi-sub">{k.sub}</div>}
+              </button>
+              {expandedKpi === k.id && k.details?.length ? (
+                <div className="kpi-detail-panel">
+                  {k.details.map((detail, detailIndex) => (
+                    <p key={`${k.id}-${detailIndex}`} className="kpi-detail-line">{detail}</p>
+                  ))}
+                </div>
+              ) : null}
             </SpotlightCard>
           </BlurFade>
         ))}
@@ -650,11 +900,34 @@ function DashboardContent() {
 
       {/* Charts */}
       <div className="charts-row">
-        <div className="chart-card">
+        <div className="chart-card desktop-performance-chart">
           <div className="chart-label">Performance</div>
           <div className="chart-title">Views Over Time</div>
           <div className="chart-subtitle">Per-video view counts by publish date</div>
           <div className="chart-container is-scrollable"><canvas ref={viewsChartRef} /></div>
+        </div>
+        <div className="chart-card mobile-performance-chart">
+          <div className="chart-label">Performance</div>
+          <div className="chart-title">Recent Upload Performance</div>
+          <div className="chart-subtitle">A touch-friendly snapshot of the latest videos</div>
+          <div className="mobile-performance-list">
+            {recentPerformanceVideos.map(v => (
+              <button key={v.id} type="button" className="mobile-performance-item" onClick={() => setModalVideo(v)}>
+                <div className="mobile-performance-head">
+                  <div className="mobile-performance-title">{v.title}</div>
+                  <div className="mobile-performance-value">{formatNumber(v.views)}</div>
+                </div>
+                <div className="mobile-performance-meta">
+                  <span>{timeAgo(v.publishedAt)}</span>
+                  <span>{v.engagementRate.toFixed(2)}% eng.</span>
+                  <span>Score {v.trendingScore}</span>
+                </div>
+                <div className="mobile-performance-bar">
+                  <span style={{ width: `${Math.max(16, (v.views / maxRecentViews) * 100)}%` }} />
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
         <div className="chart-card">
           <div className="chart-label">Engagement</div>
@@ -720,6 +993,25 @@ function DashboardContent() {
               {s.label} {currentSort === s.key ? (sortDir === 'desc' ? '↓' : '↑') : ''}
             </button>
           ))}
+        </div>
+
+        <div className={`trending-score-info ${showTrendingInfo ? 'is-open' : ''}`}>
+          <button
+            type="button"
+            className="trending-score-trigger"
+            onClick={() => setShowTrendingInfo(prev => !prev)}
+            aria-expanded={showTrendingInfo}
+          >
+            <Info size={14} />
+            <span>What does Trending Score mean?</span>
+          </button>
+          {showTrendingInfo ? (
+            <div className="trending-score-panel">
+              <p>Trending Score is a blended signal based on recency momentum, view velocity against the channel average, and engagement strength.</p>
+              <p>In this dashboard it weighs fresh uploads at 40%, relative view performance at 35%, and engagement rate at 25%.</p>
+              <p>Scores above 70 usually indicate a video that is outperforming the rest of the recent catalog.</p>
+            </div>
+          ) : null}
         </div>
 
         {/* Grid View */}

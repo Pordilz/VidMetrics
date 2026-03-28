@@ -7,10 +7,10 @@ const MARQUEE_ITEMS = [
   '12,847 channels tracked',
   'Updated every 6 hours',
   '3.2M trending scores calculated',
-  '890K insights generated',
+  '890K channel snapshots generated',
   '156 countries covered',
   'Real-time engagement monitoring',
-  'AI-powered content analysis'
+  'Basic publishing insights'
 ];
 
 export function Marquee() {
