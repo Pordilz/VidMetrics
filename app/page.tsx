@@ -23,13 +23,11 @@ export default function LandingPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [recentChannels, setRecentChannels] = useState<RecentChannel[]>([]);
-  const [liveUrl, setLiveUrl] = useState('');
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setRecentChannels(loadRecentChannels());
-    setLiveUrl(window.location.origin);
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,10 +125,6 @@ export default function LandingPage() {
 
       <div className="site-footer">
         <div className="site-footer-inner">
-          <div>
-            <div className="site-footer-label">Live URL</div>
-            <a className="site-footer-link" href={liveUrl || '/'}>{liveUrl || 'Loading…'}</a>
-          </div>
           {recentChannels.length > 0 ? (
             <div className="recent-channels">
               <div className="site-footer-label">Recently Analyzed</div>

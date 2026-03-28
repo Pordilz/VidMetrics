@@ -1,99 +1,138 @@
 # VidMetrics
 
-> **Instant competitor intelligence for YouTube creators and agencies**
+Competitive YouTube intelligence for quickly benchmarking channel performance, publishing cadence, and breakout videos.
 
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-blue?style=flat-square&logo=tailwind-css)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=flat-square&logo=typescript)
+![Chart.js](https://img.shields.io/badge/Chart.js-4-orange?style=flat-square&logo=chartdotjs)
 ![Vercel](https://img.shields.io/badge/Deployed_on-Vercel-black?style=flat-square&logo=vercel)
 
-[**Live Demo**](https://vidmetrics-git-main-yahyas-projects-cbbf0863.vercel.app/)
+[Live Demo](https://vidmetrics-git-main-yahyas-projects-cbbf0863.vercel.app/)
 
----
+## Overview
 
-## Features
+VidMetrics analyzes a YouTube channel from a URL, `@handle`, or channel ID and turns the latest uploads into a clean competitive dashboard. It is built for fast reads: a channel header, quick-glance KPIs, sortable video performance data, chart-based engagement views, and mobile-friendly inspection patterns.
 
-✅ **YouTube channel analysis** via URL, @handle, or channel ID  
-✅ **Video performance table** — views, likes, comments, engagement rate  
-✅ **VidScore** — proprietary 0-100 performance scoring algorithm  
-✅ **Trending detection** — flags high-velocity recent uploads  
-✅ **Channel comparison mode** — analyze up to 3 channels side by side  
-✅ **Summary stat cards** — total views, avg views, avg engagement, most active month  
-✅ **Top 10 videos bar chart** with gradient fills  
-✅ **CSV export** — download full analysis with one click  
-✅ **Demo mode** — pre-loaded data for instant presentation  
-✅ **Recently analyzed channels** — quick re-access via localStorage  
-✅ **Fully mobile responsive**
+The app uses live YouTube Data API responses when available and falls back to curated demo datasets for stable presentations and local demos.
 
----
+## Current Feature Set
 
-## Getting Started
+- Analyze channels by URL, `@handle`, or channel ID
+- Quick-load sample channels from the landing page
+- Persist recently analyzed channels in `localStorage`
+- Summary KPI cards with expandable detail states
+- Default `VidScore` sorting in the main performance table
+- Trending badges for qualifying videos
+- Top-video performance chart
+- Interaction breakdown doughnut chart
+- Publishing cadence heatmap with desktop tooltip and mobile tap inspection
+- Date filters and sorting by views, likes, comments, engagement, and publish date
+- CSV export for the current video set
+- Copy-link sharing for the current dashboard state
+- Side-by-side comparison mode with `+ Add Channel`
+- Responsive mobile layout with cards instead of broken table columns
+- Loading, invalid-input, and API-fallback states
 
-1. **Clone**:  
-   ```bash
-   git clone https://github.com/Pordilz/VidMetrics
-   cd vidmetrics
-   ```
+## Product Notes
 
-2. **Install**:  
-   ```bash
-   npm install
-   ```
+- Browser title: `VidMetrics — Competitive YouTube Intelligence`
+- No client-side YouTube API key exposure; requests are proxied through server routes
+- Demo fallback data currently includes curated `@MrBeast` and `@mkbhd` datasets
 
-3. **Setup**:  
-   Create a `.env.local` file by copying the example and add your YouTube API key:
-   ```bash
-   cp .env.example .env.local
-   ```
-   *Add `YOUTUBE_API_KEY=your_key_here` to `.env.local`.*
+## VidScore and Trending
 
-4. **Run**:  
-   ```bash
-   npm run dev
-   ```
-   Visit [http://localhost:3000](http://localhost:3000) to see the dashboard.
+`VidScore` is the dashboard's primary ranking signal. It blends relative view strength, engagement performance, and recency so newer high-performing uploads surface quickly without being dominated only by lifetime channel size.
 
----
-
-## VidScore Algorithm
-
-VidMetrics uses a proprietary scoring formula to rank video performance objectively across different channel sizes:
-
-- **Views Score (40%)**: Normalized against the channel's highest-viewed video to measure relative success.
-- **Engagement Score (40%)**: Normalized against a 5% benchmark rate (likes + comments / views), rewarding high-interaction content.
-- **Recency Score (20%)**: Decays over time to highlight fresh content:
-    - **0–30 days**: 20 points
-    - **31–90 days**: 10 points
-    - **90+ days**: 0 points
-
----
-
-## Architecture
-
-- **Next.js 14 App Router**: Leveraging Server Components and optimized routing for high performance.
-- **Server-Side API**: All API calls are executed through `/app/api/` routes to ensure security.
-- **Key Safety**: The YouTube API key is handled strictly server-side and never exposed to the client.
-- **Mock Data Fallback**: Built-in fallback system for demo stability if API quotas are exceeded.
-
----
-
-## What's Next (V2)
-
-- 🤖 **AI Content Intelligence**: Claude API integration for automated script analysis and title suggestions.
-- 📧 **Scheduled Monitoring**: Daily/weekly performance reports sent directly to email.
-- 🔍 **Content Gap Analysis**: Identifying underserved topics by comparing competitors side-by-side.
-- 💬 **Sentiment Analysis**: Analyzing audience mood and feedback on top-performing comments.
-- 🏷️ **White-Label Export**: Personalized PDF reports for agency clients.
-
----
+The Trending indicator is separate from the raw score display. It highlights videos showing strong recent momentum based on recency, view velocity compared with the channel baseline, and engagement strength.
 
 ## Tech Stack
 
 | Layer | Technology |
 | :--- | :--- |
-| **Framework** | Next.js 14 (App Router) |
-| **Styling** | Tailwind CSS + shadcn/ui |
-| **Charts** | Recharts / Chart.js |
-| **API** | YouTube Data API v3 |
-| **Deployment** | Vercel |
-| **Language** | TypeScript |
+| Framework | Next.js 14 App Router |
+| Language | TypeScript |
+| Styling | Global CSS with utility support |
+| Charts | Chart.js |
+| Motion | Framer Motion |
+| Icons | Lucide React |
+| 3D Landing Visual | Three.js |
+| Data Source | YouTube Data API v3 |
+| Deployment | Vercel |
+
+## Project Structure
+
+```text
+app/
+  api/
+    channel/route.ts
+    videos/route.ts
+  dashboard/page.tsx
+  layout.tsx
+  page.tsx
+  globals.css
+components/
+  landing/
+  ui/
+lib/
+  formatters.ts
+  recent-channels.ts
+  mock-data/
+```
+
+## Getting Started
+
+1. Clone the repository.
+
+   ```bash
+   git clone https://github.com/Pordilz/VidMetrics.git
+   cd VidMetrics/vidmetrics
+   ```
+
+2. Install dependencies.
+
+   ```bash
+   npm install
+   ```
+
+3. Create local environment variables.
+
+   ```bash
+   cp .env.example .env.local
+   ```
+
+4. Add your YouTube API key to `.env.local`.
+
+   ```bash
+   YOUTUBE_API_KEY=your_key_here
+   ```
+
+5. Start the development server.
+
+   ```bash
+   npm run dev
+   ```
+
+6. Open [http://127.0.0.1:3000](http://127.0.0.1:3000).
+
+## Useful Local Checks
+
+```bash
+npm run lint
+npm run build
+```
+
+## API and Security
+
+- The browser talks only to internal Next.js routes under `app/api`
+- The YouTube API key stays server-side
+- If live API requests fail, the dashboard can fall back to mock data so the interface still renders
+
+## Known Demo Paths
+
+- Landing page: [http://127.0.0.1:3000](http://127.0.0.1:3000)
+- Example dashboard: [http://127.0.0.1:3000/dashboard?q=@mkbhd](http://127.0.0.1:3000/dashboard?q=@mkbhd)
+- Comparison demo: load a channel, then use `+ Add Channel`
+
+## Status
+
+VidMetrics is currently positioned as a polished demo-ready analytics product with responsive dashboard views, comparison workflows, export tooling, and stable fallback behavior for presentations.

@@ -352,7 +352,6 @@ function DashboardContent() {
   const [comparisonData, setComparisonData] = useState<AppData | null>(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState('');
-  const [liveUrl, setLiveUrl] = useState('');
 
   useEffect(() => {
     if (query) {
@@ -383,7 +382,6 @@ function DashboardContent() {
     };
 
     syncViewport();
-    setLiveUrl(window.location.href);
     window.addEventListener('resize', syncViewport);
     return () => window.removeEventListener('resize', syncViewport);
   }, []);
@@ -485,7 +483,19 @@ function DashboardContent() {
             },
             layout: { padding: 16 },
             plugins: {
-              legend: { position: 'bottom', labels: { color: '#6B6560', font: { family: 'Instrument Sans', size: 12, weight: 500 }, padding: 16, usePointStyle: true, pointStyleWidth: 8 } },
+              legend: {
+                position: 'bottom',
+                labels: {
+                  color: '#6B6560',
+                  font: { family: 'Instrument Sans', size: 12, weight: 500 },
+                  padding: 16,
+                  usePointStyle: true,
+                  pointStyle: 'circle',
+                  pointStyleWidth: 10,
+                  boxWidth: 10,
+                  boxHeight: 10,
+                }
+              },
               tooltip: { backgroundColor: '#1A1714', titleColor: '#F7F5F0', bodyColor: '#F7F5F0', bodyFont: { family: 'DM Mono', size: 12 }, padding: 12, cornerRadius: 6 }
             },
             animation: { animateRotate: true, duration: 1000, easing: 'easeOutQuart' }
@@ -553,9 +563,6 @@ function DashboardContent() {
     setComparisonInput('');
     setComparisonData(null);
     setComparisonError('');
-    if (typeof window !== 'undefined') {
-      setLiveUrl(window.location.href);
-    }
   }, [appData, query]);
 
   useEffect(() => {
@@ -1521,11 +1528,7 @@ function DashboardContent() {
 
       <footer className="dashboard-footer">
         <div className="dashboard-footer-inner">
-          <div>
-            <div className="site-footer-label">Live URL</div>
-            <a className="site-footer-link" href={liveUrl || '/'}>{liveUrl || 'Loading…'}</a>
-          </div>
-          <div className="dashboard-footer-note">Demo-ready competitive YouTube analysis with touch-friendly mobile views, VidScore sorting, exports, and channel comparison.</div>
+          <div className="dashboard-footer-note">Clear YouTube performance intelligence for benchmarking channel growth, publishing cadence, and breakout videos.</div>
         </div>
       </footer>
     </div>
