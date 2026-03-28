@@ -1349,11 +1349,11 @@ function DashboardContent() {
             aria-expanded={showTrendingInfo}
           >
             <Info size={14} />
-            <span>What does Trending Score mean?</span>
+            <span>What does VidScore mean?</span>
           </button>
           {showTrendingInfo ? (
             <div className="trending-score-panel">
-              <p>Trending Score is a blended signal based on recency momentum, view velocity against the channel average, and engagement strength.</p>
+              <p>VidScore is a blended signal based on recency momentum, view velocity against the channel average, and engagement strength.</p>
               <p>In this dashboard it weighs fresh uploads at 40%, relative view performance at 35%, and engagement rate at 25%.</p>
               <p>Scores above 60 usually indicate a video that is outperforming the rest of the recent catalog.</p>
             </div>
