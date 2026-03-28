@@ -11,10 +11,28 @@ export function Hero3D() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const supportsWebGL = () => {
+      try {
+        const testCanvas = document.createElement('canvas');
+        return Boolean(
+          testCanvas.getContext('webgl')
+          || testCanvas.getContext('experimental-webgl')
+          || testCanvas.getContext('webgl2')
+        );
+      } catch {
+        return false;
+      }
+    };
+
+    if (!supportsWebGL()) {
+      return;
+    }
+
     let THREE: any;
+    let cleanupScene: (() => void) | undefined;
     const loadThree = async () => {
       THREE = await import('three');
-      initScene();
+      cleanupScene = initScene();
     };
 
     let renderer: any, scene: any, camera: any, barGroup: any;
@@ -119,6 +137,7 @@ export function Hero3D() {
       return () => {
         document.removeEventListener('mousemove', handleMouseMove);
         window.removeEventListener('resize', handleResize);
+        renderer?.dispose();
       };
     }
 
@@ -158,6 +177,7 @@ export function Hero3D() {
 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      cleanupScene?.();
     };
   }, []);
 

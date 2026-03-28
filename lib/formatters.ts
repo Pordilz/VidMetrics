@@ -29,9 +29,9 @@ export function formatDate(dateStr: string): string {
 }
 
 export function getTrendLabel(score: number): { label: string; cls: string } {
-  if (score >= 80) return { label: '🔥 Hot', cls: 'hot' };
-  if (score >= 60) return { label: '📈 Rising', cls: 'rising' };
-  if (score >= 40) return { label: '📊 Stable', cls: 'stable' };
+  if (score >= 60) return { label: '🔥 Hot', cls: 'hot' };
+  if (score >= 45) return { label: '📈 Rising', cls: 'rising' };
+  if (score >= 30) return { label: '📊 Stable', cls: 'stable' };
   return { label: '📉 Fading', cls: 'fading' };
 }
 

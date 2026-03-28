@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { formatNumber, formatDuration, timeAgo, formatDate, getTrendLabel } from '@/lib/formatters';
+import { deriveRecentChannelLabel, saveRecentChannel } from '@/lib/recent-channels';
 /* eslint-disable @next/next/no-img-element */
 import { Chart, registerables } from 'chart.js';
-import { ArrowLeft, ChevronDown, Download, Info, Link2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Download, Info, Link2, X } from 'lucide-react';
 import NumberTicker from '@/components/ui/number-ticker';
 import { SpotlightCard } from '@/components/ui/spotlight-card';
 import BlurFade from '@/components/ui/blur-fade';
@@ -60,17 +61,24 @@ interface HeatmapTooltipState {
   placement: 'top' | 'bottom';
 }
 
-type KPIFormat = 'number' | 'percent' | 'rate';
+type KPIFormat = 'number' | 'percent';
 
 interface KPIItem {
   id: string;
   label: string;
   value: number;
-  format: KPIFormat;
+  format: Exclude<KPIFormat, 'rate'>;
   trend?: 'up' | 'down' | 'neutral';
   trendVal?: string;
   sub?: string;
   details?: string[];
+}
+
+interface ComparisonMetric {
+  id: string;
+  label: string;
+  value: number;
+  valueText: string;
 }
 
 
@@ -81,6 +89,137 @@ const MOCK_MAP: Record<string, AppData> = {
   'ucx6oq3dkcsbyne6h8uqquva': mrbeastData,
   'ucbcrf18a7qf58cmattefwwq': mkbhdData
 };
+
+const THUMBNAIL_FALLBACK_BACKGROUND = '#F0EDE8';
+const THUMBNAIL_FALLBACK_FOREGROUND = '#6B6560';
+
+function escapeSvgText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildThumbnailFallback(label: string): string {
+  const safeLabel = escapeSvgText(label.length > 34 ? `${label.slice(0, 31)}...` : label);
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">
+      <rect width="320" height="180" fill="${THUMBNAIL_FALLBACK_BACKGROUND}" />
+      <text x="160" y="90" text-anchor="middle" dominant-baseline="middle" fill="${THUMBNAIL_FALLBACK_FOREGROUND}" font-family="Arial, sans-serif" font-size="16">
+        ${safeLabel}
+      </text>
+    </svg>
+  `)}`;
+}
+
+function handleThumbnailError(event: React.SyntheticEvent<HTMLImageElement>, label: string) {
+  const element = event.currentTarget;
+  if (element.dataset.fallbackApplied === 'true') return;
+  element.dataset.fallbackApplied = 'true';
+  element.src = buildThumbnailFallback(label);
+}
+
+function getDemoThumbnailUrl(video: VideoData): string {
+  if (video.id) {
+    return `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`;
+  }
+
+  return video.thumbnail || buildThumbnailFallback(video.title);
+}
+
+function buildDemoAppData(data: AppData): AppData {
+  return {
+    ...data,
+    isDemo: true,
+    videos: data.videos.map((video) => ({
+      ...video,
+      thumbnail: getDemoThumbnailUrl(video),
+    })),
+  };
+}
+
+function getAnalysisReferenceTime(videos: VideoData[], isDemo?: boolean): number {
+  if (!videos.length) return Date.now();
+
+  if (!isDemo) {
+    return Date.now();
+  }
+
+  const latestPublishedAt = Math.max(...videos.map((video) => new Date(video.publishedAt).getTime()));
+  return Number.isFinite(latestPublishedAt) ? latestPublishedAt : Date.now();
+}
+
+function parseCompactNumber(value: string): number {
+  const trimmed = value.trim().toUpperCase();
+  const numeric = Number.parseFloat(trimmed);
+
+  if (Number.isNaN(numeric)) return 0;
+  if (trimmed.endsWith('B')) return numeric * 1_000_000_000;
+  if (trimmed.endsWith('M')) return numeric * 1_000_000;
+  if (trimmed.endsWith('K')) return numeric * 1_000;
+
+  return numeric;
+}
+
+function getComparisonSummary(data: AppData): ComparisonMetric[] {
+  const averageViews = data.videos.length
+    ? Math.round(data.videos.reduce((sum, video) => sum + video.views, 0) / data.videos.length)
+    : 0;
+  const averageEngagement = data.videos.length
+    ? data.videos.reduce((sum, video) => sum + video.engagementRate, 0) / data.videos.length
+    : 0;
+
+  return [
+    {
+      id: 'subscribers',
+      label: 'Subscribers',
+      value: parseCompactNumber(data.channel.subs),
+      valueText: data.channel.subs,
+    },
+    {
+      id: 'videos',
+      label: 'Videos',
+      value: data.channel.videos,
+      valueText: data.channel.videos.toLocaleString(),
+    },
+    {
+      id: 'avg-views',
+      label: 'Avg Views',
+      value: averageViews,
+      valueText: formatNumber(averageViews),
+    },
+    {
+      id: 'avg-engagement',
+      label: 'Avg Engagement',
+      value: averageEngagement,
+      valueText: `${averageEngagement.toFixed(2)}%`,
+    },
+  ];
+}
+
+function getTrendDelta(current: number, previous: number): Pick<KPIItem, 'trend' | 'trendVal'> {
+  if (previous <= 0) {
+    if (current > 0) {
+      return { trend: 'up', trendVal: 'New vs prior window' };
+    }
+
+    return { trend: 'neutral', trendVal: 'No prior baseline' };
+  }
+
+  const deltaPct = ((current - previous) / previous) * 100;
+
+  if (Math.abs(deltaPct) < 1) {
+    return { trend: 'neutral', trendVal: 'Within 1% of prior window' };
+  }
+
+  return {
+    trend: deltaPct > 0 ? 'up' : 'down',
+    trendVal: `${deltaPct > 0 ? '+' : ''}${deltaPct.toFixed(1)}% vs prior window`,
+  };
+}
 
 
 // ===== Parse ISO 8601 duration (PT1H2M3S) to seconds =====
@@ -93,6 +232,8 @@ function parseDuration(iso: string): number {
 
 // ===== TRY TO FETCH FROM REAL API, FALLBACK TO CURATED DEMO =====
 async function fetchChannelData(query: string): Promise<AppData | null> {
+  const normalized = query.toLowerCase().replace(/[@/]|https?:\/\/.*\/|www\.youtube\.com\//g, '');
+
   try {
     // Build a URL for the API — if it's a handle like @MrBeast, wrap it
     let apiUrl = query;
@@ -156,16 +297,11 @@ async function fetchChannelData(query: string): Promise<AppData | null> {
     });
 
     return { channel, videos, isDemo: false };
-  } catch (error) {
-    console.error("Fetch error, checking mock fallback:", error);
-    
-    // Normalize query for matching
-    const normalized = query.toLowerCase().replace(/[@/]|https?:\/\/.*\/|www\.youtube\.com\//g, '');
-    
+  } catch {
     if (MOCK_MAP[normalized]) {
-      return { ...MOCK_MAP[normalized], isDemo: true };
+      return buildDemoAppData(MOCK_MAP[normalized]);
     }
-    
+
     return null;
   }
 }
@@ -189,12 +325,12 @@ function DashboardContent() {
   const [appData, setAppData] = useState<AppData | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
-  const [currentView, setCurrentView] = useState<'grid' | 'table'>('grid');
-  const [currentSort, setCurrentSort] = useState('date');
+  const [currentView, setCurrentView] = useState<'grid' | 'table'>('table');
+  const [currentSort, setCurrentSort] = useState('trending');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [trendingOnly, setTrendingOnly] = useState(false);
   const [searchQ, setSearchQ] = useState('');
-  const [dateFilter, setDateFilter] = useState('30');
+  const [dateFilter, setDateFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [modalVideo, setModalVideo] = useState<VideoData | null>(null);
   const [toasts, setToasts] = useState<string[]>([]);
@@ -211,6 +347,12 @@ function DashboardContent() {
   const [heatmapTooltip, setHeatmapTooltip] = useState<HeatmapTooltipState | null>(null);
   const [expandedKpi, setExpandedKpi] = useState<string | null>(null);
   const [showTrendingInfo, setShowTrendingInfo] = useState(false);
+  const [showComparisonComposer, setShowComparisonComposer] = useState(false);
+  const [comparisonInput, setComparisonInput] = useState('');
+  const [comparisonData, setComparisonData] = useState<AppData | null>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState('');
+  const [liveUrl, setLiveUrl] = useState('');
 
   useEffect(() => {
     if (query) {
@@ -219,7 +361,15 @@ function DashboardContent() {
       fetchChannelData(query).then(data => {
         if (data) {
           setAppData(data);
+          saveRecentChannel({
+            name: data.channel.name,
+            query,
+            label: deriveRecentChannelLabel(query, data.channel.name),
+            thumbnail: data.channel.thumbnail,
+            viewedAt: new Date().toISOString(),
+          });
         } else {
+          setAppData(null);
           setFetchError(true);
         }
         setLoading(false);
@@ -233,6 +383,7 @@ function DashboardContent() {
     };
 
     syncViewport();
+    setLiveUrl(window.location.href);
     window.addEventListener('resize', syncViewport);
     return () => window.removeEventListener('resize', syncViewport);
   }, []);
@@ -390,6 +541,21 @@ function DashboardContent() {
     setHeatmapTooltip(null);
     setExpandedKpi(null);
     setShowTrendingInfo(false);
+    setCurrentView('table');
+    setCurrentSort('trending');
+    setSortDir('desc');
+    setTrendingOnly(false);
+    setSearchQ('');
+    setDateFilter('all');
+    setCurrentPage(1);
+    setModalVideo(null);
+    setShowComparisonComposer(false);
+    setComparisonInput('');
+    setComparisonData(null);
+    setComparisonError('');
+    if (typeof window !== 'undefined') {
+      setLiveUrl(window.location.href);
+    }
   }, [appData, query]);
 
   useEffect(() => {
@@ -401,7 +567,7 @@ function DashboardContent() {
   // ===== EXPORT CSV =====
   const exportCSV = () => {
     if (!appData) return;
-    const headers = ['Title','Published','Views','Likes','Comments','Duration','Engagement Rate','Trending Score'];
+    const headers = ['Title','Published','Views','Likes','Comments','Duration','Engagement Rate','VidScore'];
     const rows = appData.videos.map(v => [
       `"${v.title.replace(/"/g, '""')}"`, v.publishedAt, v.views, v.likes, v.comments, v.duration, v.engagementRate.toFixed(2), v.trendingScore
     ]);
@@ -416,17 +582,54 @@ function DashboardContent() {
     showToast('✓ CSV exported successfully');
   };
 
+  const handleComparisonSubmit = async () => {
+    const nextQuery = comparisonInput.trim();
+
+    if (!nextQuery) {
+      setComparisonError('Enter a channel URL or handle to compare.');
+      return;
+    }
+
+    if (nextQuery.toLowerCase() === query.trim().toLowerCase()) {
+      setComparisonError('This channel is already loaded in the main view.');
+      return;
+    }
+
+    setComparisonLoading(true);
+    setComparisonError('');
+
+    const data = await fetchChannelData(nextQuery);
+
+    if (!data) {
+      setComparisonLoading(false);
+      setComparisonError('We could not load that comparison channel.');
+      return;
+    }
+
+    setComparisonData(data);
+    setShowComparisonComposer(false);
+    setComparisonLoading(false);
+    saveRecentChannel({
+      name: data.channel.name,
+      query: nextQuery,
+      label: deriveRecentChannelLabel(nextQuery, data.channel.name),
+      thumbnail: data.channel.thumbnail,
+      viewedAt: new Date().toISOString(),
+    });
+    showToast(`Comparing with ${data.channel.name}`);
+  };
+
   // ===== FILTER & SORT =====
   const getFilteredVideos = useCallback(() => {
     if (!appData) return [];
-    const now = Date.now();
+    const now = getAnalysisReferenceTime(appData.videos, appData.isDemo);
     const filtered = appData.videos.filter(v => {
       if (searchQ && !v.title.toLowerCase().includes(searchQ.toLowerCase())) return false;
       if (dateFilter !== 'all') {
         const days = parseInt(dateFilter);
         if ((now - new Date(v.publishedAt).getTime()) > days * 86400000) return false;
       }
-      if (trendingOnly && v.trendingScore < 70) return false;
+      if (trendingOnly && v.trendingScore < 60) return false;
       return true;
     });
 
@@ -470,31 +673,36 @@ function DashboardContent() {
       return { numericValue: value, suffix: '%', decimalPlaces: 2, compact: value >= 10 };
     }
 
-    return { numericValue: value, suffix: '/wk', decimalPlaces: 1, compact: false };
+    return { numericValue: value, suffix: '', decimalPlaces: 0, compact: false };
   };
 
   // ===== KPIs =====
   const getKPIs = (): KPIItem[] => {
     if (!appData) return [];
     const { videos } = appData;
-    const now = Date.now();
+    const now = getAnalysisReferenceTime(videos, appData.isDemo);
     const last30 = videos.filter(v => (now - new Date(v.publishedAt).getTime()) < 30 * 86400000);
+    const prev30 = videos.filter(v => {
+      const age = now - new Date(v.publishedAt).getTime();
+      return age >= 30 * 86400000 && age < 60 * 86400000;
+    });
     const totalViews30 = last30.reduce((s, v) => s + v.views, 0);
+    const prevTotalViews30 = prev30.reduce((s, v) => s + v.views, 0);
     const avgViews = videos.length ? Math.round(videos.reduce((s, v) => s + v.views, 0) / videos.length) : 0;
     const topVideo = [...videos].sort((a, b) => b.views - a.views)[0];
     const avgEng = videos.length ? (videos.reduce((s, v) => s + v.engagementRate, 0) / videos.length).toFixed(2) : '0';
+    const last30AvgEng = last30.length ? last30.reduce((s, v) => s + v.engagementRate, 0) / last30.length : 0;
+    const prev30AvgEng = prev30.length ? prev30.reduce((s, v) => s + v.engagementRate, 0) / prev30.length : 0;
     const sortedViews = [...videos].map(v => v.views).sort((a, b) => a - b);
     const mid = Math.floor(sortedViews.length / 2);
     const medianViews = sortedViews.length % 2 === 0
       ? Math.round(((sortedViews[mid - 1] || 0) + (sortedViews[mid] || 0)) / 2)
       : (sortedViews[mid] || 0);
-    const weeks = new Set(videos.map(v => {
-      const d = new Date(v.publishedAt);
-      const start = new Date(d.getFullYear(), 0, 1);
-      return d.getFullYear() + '-' + Math.ceil((d.getTime() - start.getTime()) / 604800000);
-    }));
-    const cadence = weeks.size ? (videos.length / weeks.size).toFixed(1) : '0';
     const recentAvgViews = last30.length ? Math.round(totalViews30 / last30.length) : 0;
+    const previousAvgViews = prev30.length ? Math.round(prevTotalViews30 / prev30.length) : 0;
+    const viewsTrend = getTrendDelta(totalViews30, prevTotalViews30);
+    const avgViewsTrend = getTrendDelta(recentAvgViews || avgViews, previousAvgViews || avgViews);
+    const engagementTrend = getTrendDelta(last30AvgEng || parseFloat(avgEng), prev30AvgEng || parseFloat(avgEng));
 
     const kpis: KPIItem[] = [
       {
@@ -502,8 +710,8 @@ function DashboardContent() {
         label: 'Views (30 Days)',
         value: totalViews30,
         format: 'number',
-        trend: 'up',
-        trendVal: '+12.4%',
+        trend: viewsTrend.trend,
+        trendVal: viewsTrend.trendVal,
         details: [
           `${last30.length} uploads contributed to this 30-day total.`,
           `Recent uploads average ${formatNumber(recentAvgViews)} views each.`,
@@ -514,11 +722,12 @@ function DashboardContent() {
         label: 'Avg Views / Video',
         value: avgViews,
         format: 'number',
-        trend: 'neutral',
-        trendVal: '~steady',
+        trend: avgViewsTrend.trend,
+        trendVal: avgViewsTrend.trendVal,
         details: [
           `Average taken across ${videos.length.toLocaleString()} fetched videos.`,
           `Median performance sits at ${formatNumber(medianViews)} views.`,
+          prev30.length ? `Recent uploads average ${formatNumber(recentAvgViews)} views vs ${formatNumber(previousAvgViews)} in the prior 30-day window.` : 'Not enough prior-window uploads yet for a fuller comparison.',
         ],
       },
       {
@@ -537,22 +746,11 @@ function DashboardContent() {
         label: 'Avg Engagement',
         value: parseFloat(avgEng),
         format: 'percent',
-        trend: 'up',
-        trendVal: '+0.3%',
+        trend: engagementTrend.trend,
+        trendVal: engagementTrend.trendVal,
         details: [
           `Calculated from likes and comments relative to views across ${videos.length.toLocaleString()} videos.`,
           'Channels often land in different healthy ranges depending on format, audience, and upload style.',
-        ],
-      },
-      {
-        id: 'cadence',
-        label: 'Cadence',
-        value: parseFloat(cadence),
-        format: 'rate',
-        sub: `${last30.length} videos this month`,
-        details: [
-          `${videos.length.toLocaleString()} uploads spread across ${weeks.size} active weeks.`,
-          `${last30.length} uploads landed in the last 30 days.`,
         ],
       },
     ];
@@ -565,7 +763,7 @@ function DashboardContent() {
     if (!appData) return [];
     const { videos } = appData;
     const insights: { type: string; icon: string; title: string; body: string }[] = [];
-    const now = Date.now();
+    const now = getAnalysisReferenceTime(videos, appData.isDemo);
     const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     const dayViews: Record<number, number> = {};
     const dayCounts: Record<number, number> = {};
@@ -635,7 +833,14 @@ function DashboardContent() {
     if (!appData) return null;
     const { videos } = appData;
     const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    const today = new Date();
+    const today = new Date(getAnalysisReferenceTime(videos, appData.isDemo));
+    const activeWeeks = new Set(videos.map((video) => {
+      const publishedAt = new Date(video.publishedAt);
+      const startOfYear = new Date(publishedAt.getFullYear(), 0, 1);
+      return `${publishedAt.getFullYear()}-${Math.ceil((publishedAt.getTime() - startOfYear.getTime()) / 604800000)}`;
+    }));
+    const uploadsLast30 = videos.filter((video) => (today.getTime() - new Date(video.publishedAt).getTime()) < 30 * 86400000).length;
+    const weeklyCadence = activeWeeks.size ? (videos.length / activeWeeks.size).toFixed(1) : '0.0';
     
     const dayCounts: Record<string, number> = {};
     videos.forEach(v => {
@@ -710,6 +915,16 @@ function DashboardContent() {
           <div className="chart-subtitle" style={{ marginBottom: 16 }}>
             {isMobile ? 'Tap a day to inspect uploads across the last 52 weeks' : 'Upload frequency heatmap — last 52 weeks'}
           </div>
+          <div className="heatmap-summary">
+            <div className="heatmap-summary-pill">
+              <strong>{weeklyCadence}</strong>
+              <span>uploads / active week</span>
+            </div>
+            <div className="heatmap-summary-pill">
+              <strong>{uploadsLast30}</strong>
+              <span>uploads in the last 30 days</span>
+            </div>
+          </div>
           <div className="heatmap-container">
             <div className="heatmap-days">
               {days.map(d => <span key={d} className="heatmap-day-label">{d}</span>)}
@@ -776,12 +991,14 @@ function DashboardContent() {
 
   const kpis = getKPIs();
   const insights = getInsights();
+  const primarySummary = getComparisonSummary(appData);
+  const comparisonSummary = comparisonData ? getComparisonSummary(comparisonData) : null;
   const recentPerformanceVideos = [...appData.videos]
     .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
     .slice(0, 6);
   const maxRecentViews = recentPerformanceVideos.reduce((max, video) => Math.max(max, video.views), 1);
   const sortOptions = [
-    { key: 'date', label: 'Date' }, { key: 'views', label: 'Views' }, { key: 'likes', label: 'Likes' }, { key: 'comments', label: 'Comments' }, { key: 'engagement', label: 'Engagement' }, { key: 'trending', label: 'Trending Score' }
+    { key: 'trending', label: 'VidScore' }, { key: 'date', label: 'Date' }, { key: 'views', label: 'Views' }, { key: 'likes', label: 'Likes' }, { key: 'comments', label: 'Comments' }, { key: 'engagement', label: 'Engagement' }
   ];
 
   return (
@@ -825,7 +1042,15 @@ function DashboardContent() {
                 <span className="channel-stat"><strong>{appData.channel.videos.toLocaleString()}</strong> videos</span>
                 {appData.channel.country && (
                   <span className="channel-stat" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <img src={`https://flagcdn.com/w20/${appData.channel.country.toLowerCase()}.png`} width="16" alt={appData.channel.country} style={{ borderRadius: 2 }} />
+                    <img
+                      src={`https://flagcdn.com/w20/${appData.channel.country.toLowerCase()}.png`}
+                      width="16"
+                      alt={appData.channel.country}
+                      style={{ borderRadius: 2 }}
+                      onError={(event) => {
+                        (event.currentTarget as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
                     {appData.channel.country}
                   </span>
                 )}
@@ -834,27 +1059,141 @@ function DashboardContent() {
             </div>
           </div>
 
-          <div className="channel-actions-panel">
-            <div className="channel-actions-label">Share This Snapshot</div>
-            <div className="channel-actions">
-              <button className="channel-action-btn primary" onClick={exportCSV}>
-                <Download size={16} />
-                <span>Export CSV</span>
+          <div className="channel-actions-stack">
+            <div className="channel-actions-panel">
+              <div className="channel-actions-label">Share This Snapshot</div>
+              <div className="channel-actions">
+                <button className="channel-action-btn primary" onClick={exportCSV}>
+                  <Download size={16} />
+                  <span>Export CSV</span>
+                </button>
+                <button className="channel-action-btn secondary" onClick={copyDashboardLink}>
+                  <Link2 size={16} />
+                  <span>Copy Link</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="channel-actions-panel comparison-controls">
+              <div className="channel-actions-label">Comparison Mode</div>
+              <button
+                type="button"
+                className="channel-action-btn secondary comparison-trigger"
+                onClick={() => {
+                  setShowComparisonComposer((previous) => !previous);
+                  setComparisonError('');
+                }}
+              >
+                <span>+ Add Channel</span>
               </button>
-              <button className="channel-action-btn secondary" onClick={copyDashboardLink}>
-                <Link2 size={16} />
-                <span>Copy Link</span>
-              </button>
+
+              {showComparisonComposer ? (
+                <div className="comparison-form">
+                  <input
+                    className="comparison-input"
+                    type="text"
+                    value={comparisonInput}
+                    placeholder="Paste a URL or @handle"
+                    onChange={(event) => setComparisonInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        void handleComparisonSubmit();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="channel-action-btn primary comparison-submit"
+                    onClick={() => void handleComparisonSubmit()}
+                    disabled={comparisonLoading}
+                  >
+                    <span>{comparisonLoading ? 'Loading…' : 'Compare'}</span>
+                  </button>
+                </div>
+              ) : null}
+
+              {comparisonError ? <p className="comparison-error">{comparisonError}</p> : null}
+              {comparisonData ? (
+                <div className="comparison-current">
+                  <span>Comparing against</span>
+                  <strong>{comparisonData.channel.name}</strong>
+                  <button
+                    type="button"
+                    className="comparison-clear"
+                    onClick={() => {
+                      setComparisonData(null);
+                      setComparisonInput('');
+                      setComparisonError('');
+                    }}
+                    aria-label="Clear comparison channel"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
       </div>
 
+      {comparisonData && comparisonSummary ? (
+        <div className="comparison-section">
+          <div className="comparison-section-header">
+            <div>
+              <div className="section-label">Compare</div>
+              <div className="section-title comparison-title">Side-by-side channel snapshot</div>
+            </div>
+            <span className="comparison-caption">A quick read on how the active channel stacks up right now.</span>
+          </div>
+          <div className="comparison-row">
+            <div className="comparison-card">
+              <div className="comparison-card-label">Primary Channel</div>
+              <div className="comparison-card-title">{appData.channel.name}</div>
+              <div className="comparison-metrics">
+                {primarySummary.map((metric) => (
+                  <div key={metric.id} className="comparison-metric">
+                    <span className="comparison-metric-label">{metric.label}</span>
+                    <strong>{metric.valueText}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="comparison-divider" />
+
+            <div className="comparison-card">
+              <div className="comparison-card-label">Comparison Channel</div>
+              <div className="comparison-card-title">{comparisonData.channel.name}</div>
+              <div className="comparison-metrics">
+                {comparisonSummary.map((metric, index) => {
+                  const baseline = primarySummary[index];
+                  const delta = metric.value - baseline.value;
+                  const deltaDirection = delta === 0 ? 'neutral' : delta > 0 ? 'up' : 'down';
+                  const deltaText = baseline.id === 'avg-engagement'
+                    ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)} pts`
+                    : `${delta > 0 ? '+' : ''}${formatNumber(Math.round(delta))}`;
+
+                  return (
+                    <div key={metric.id} className="comparison-metric">
+                      <div className="comparison-metric-topline">
+                        <span className="comparison-metric-label">{metric.label}</span>
+                        <span className={`comparison-delta ${deltaDirection}`}>{deltaText}</span>
+                      </div>
+                      <strong>{metric.valueText}</strong>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* KPIs */}
       <div className="kpi-grid">
         {kpis.map((k, i) => (
           <BlurFade key={i} delay={0.1 + i * 0.05} inView>
-            <SpotlightCard className={`kpi-card !border-0 ${expandedKpi === k.id ? 'is-expanded' : ''}`} spotlightColor="rgba(232, 68, 26, 0.05)">
+            <SpotlightCard className={`kpi-card !border-0 ${expandedKpi === k.id ? 'is-expanded' : ''}`} spotlightColor="rgba(232, 68, 26, 0.05)" data-kpi-id={k.id}>
               <button
                 type="button"
                 className={`kpi-toggle ${k.details?.length ? 'is-expandable' : ''}`}
@@ -920,7 +1259,7 @@ function DashboardContent() {
                 <div className="mobile-performance-meta">
                   <span>{timeAgo(v.publishedAt)}</span>
                   <span>{v.engagementRate.toFixed(2)}% eng.</span>
-                  <span>Score {v.trendingScore}</span>
+                  <span>VidScore {v.trendingScore}</span>
                 </div>
                 <div className="mobile-performance-bar">
                   <span style={{ width: `${Math.max(16, (v.views / maxRecentViews) * 100)}%` }} />
@@ -1009,7 +1348,7 @@ function DashboardContent() {
             <div className="trending-score-panel">
               <p>Trending Score is a blended signal based on recency momentum, view velocity against the channel average, and engagement strength.</p>
               <p>In this dashboard it weighs fresh uploads at 40%, relative view performance at 35%, and engagement rate at 25%.</p>
-              <p>Scores above 70 usually indicate a video that is outperforming the rest of the recent catalog.</p>
+              <p>Scores above 60 usually indicate a video that is outperforming the rest of the recent catalog.</p>
             </div>
           ) : null}
         </div>
@@ -1019,9 +1358,19 @@ function DashboardContent() {
           {paged.map((v, i) => {
             const trend = getTrendLabel(v.trendingScore);
             return (
-              <div key={v.id} className="video-card revealed" style={{ transitionDelay: `${i * 0.04}s` }} onClick={() => setModalVideo(v)}>
+              <div
+                key={v.id}
+                className="video-card revealed"
+                style={{ transitionDelay: `${i * 0.04}s` }}
+                onClick={() => setModalVideo(v)}
+                data-video-id={v.id}
+                data-video-views={v.views}
+                data-video-likes={v.likes}
+                data-video-published={v.publishedAt}
+                data-video-vidscore={v.trendingScore}
+              >
                 <div className="video-thumb">
-                  <img src={v.thumbnail} alt={v.title} loading="lazy" />
+                  <img src={v.thumbnail} alt={v.title} loading="lazy" onError={(event) => handleThumbnailError(event, v.title)} />
                   <span className="duration-badge">{formatDuration(v.duration)}</span>
                   <span className={`trending-badge ${trend.cls}`}>{v.trendingScore}</span>
                 </div>
@@ -1042,13 +1391,22 @@ function DashboardContent() {
         {/* Table View */}
         <div className={`video-table-wrap ${currentView === 'table' ? 'active' : ''}`}>
           <table className="video-table">
-            <thead><tr><th></th><th>Title</th><th>Published</th><th>Views</th><th>Likes</th><th>Comments</th><th>Eng. Rate</th><th>Score</th></tr></thead>
+            <thead><tr><th></th><th>Title</th><th>Published</th><th>Views</th><th>Likes</th><th>Comments</th><th>Eng. Rate</th><th>VidScore</th></tr></thead>
             <tbody>
               {paged.map(v => {
                 const trend = getTrendLabel(v.trendingScore);
                 return (
-                  <tr key={v.id} style={{ cursor: 'pointer' }} onClick={() => setModalVideo(v)}>
-                    <td><img className="table-thumb" src={v.thumbnail} alt={v.title} loading="lazy" /></td>
+                  <tr
+                    key={v.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setModalVideo(v)}
+                    data-video-id={v.id}
+                    data-video-views={v.views}
+                    data-video-likes={v.likes}
+                    data-video-published={v.publishedAt}
+                    data-video-vidscore={v.trendingScore}
+                  >
+                    <td><img className="table-thumb" src={v.thumbnail} alt={v.title} loading="lazy" onError={(event) => handleThumbnailError(event, v.title)} /></td>
                     <td><span className="table-title">{v.title}</span></td>
                     <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{timeAgo(v.publishedAt)}</td>
                     <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{formatNumber(v.views)}</td>
@@ -1068,15 +1426,24 @@ function DashboardContent() {
           {paged.map(v => {
             const trend = getTrendLabel(v.trendingScore);
             return (
-              <div key={v.id} className="mobile-video-card" onClick={() => setModalVideo(v)}>
+              <div
+                key={v.id}
+                className="mobile-video-card"
+                onClick={() => setModalVideo(v)}
+                data-video-id={v.id}
+                data-video-views={v.views}
+                data-video-likes={v.likes}
+                data-video-published={v.publishedAt}
+                data-video-vidscore={v.trendingScore}
+              >
                 <div className="mobile-video-thumb">
-                  <img src={v.thumbnail} alt={v.title} loading="lazy" />
+                  <img src={v.thumbnail} alt={v.title} loading="lazy" onError={(event) => handleThumbnailError(event, v.title)} />
                   <span className="duration-badge">{formatDuration(v.duration)}</span>
                 </div>
                 <div className="mobile-video-content">
                   <div className="mobile-video-title">{v.title}</div>
                   <div className="mobile-video-badges">
-                    <span className={`trending-badge ${trend.cls}`} style={{ position: 'static' }}>{v.trendingScore} Score</span>
+                    <span className={`trending-badge ${trend.cls}`} style={{ position: 'static' }}>{v.trendingScore} VidScore</span>
                     {v.trendingScore >= 70 && <span className="trending-badge hot" style={{ position: 'static' }}>Trending</span>}
                   </div>
                   <div className="mobile-stats-grid">
@@ -1120,7 +1487,7 @@ function DashboardContent() {
         <div className="modal-overlay active" onClick={() => setModalVideo(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={() => setModalVideo(null)}>✕</button>
-            <img className="modal-thumb" src={modalVideo.thumbnail} alt={modalVideo.title} />
+            <img className="modal-thumb" src={modalVideo.thumbnail} alt={modalVideo.title} onError={(event) => handleThumbnailError(event, modalVideo.title)} />
             <div className="modal-body">
               <div className="modal-title">{modalVideo.title}</div>
               <div className="modal-meta">
@@ -1151,6 +1518,16 @@ function DashboardContent() {
       <div className="toast-container">
         {toasts.map((msg, i) => <div key={i} className="toast show">{msg}</div>)}
       </div>
+
+      <footer className="dashboard-footer">
+        <div className="dashboard-footer-inner">
+          <div>
+            <div className="site-footer-label">Live URL</div>
+            <a className="site-footer-link" href={liveUrl || '/'}>{liveUrl || 'Loading…'}</a>
+          </div>
+          <div className="dashboard-footer-note">Demo-ready competitive YouTube analysis with touch-friendly mobile views, VidScore sorting, exports, and channel comparison.</div>
+        </div>
+      </footer>
     </div>
   );
 }

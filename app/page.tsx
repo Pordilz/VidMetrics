@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+/* eslint-disable @next/next/no-img-element */
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Hero3D } from '@/components/landing/Hero3D';
 import { Marquee } from '@/components/landing/Marquee';
 import { validateYouTubeURL } from '@/lib/formatters';
+import { loadRecentChannels, type RecentChannel } from '@/lib/recent-channels';
 import { useRouter } from 'next/navigation';
 
 // SVG Logo Icon Component
@@ -20,8 +22,15 @@ export default function LandingPage() {
   const [isValid, setIsValid] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [recentChannels, setRecentChannels] = useState<RecentChannel[]>([]);
+  const [liveUrl, setLiveUrl] = useState('');
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setRecentChannels(loadRecentChannels());
+    setLiveUrl(window.location.origin);
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -115,6 +124,43 @@ export default function LandingPage() {
       </div>
 
       <Marquee />
+
+      <div className="site-footer">
+        <div className="site-footer-inner">
+          <div>
+            <div className="site-footer-label">Live URL</div>
+            <a className="site-footer-link" href={liveUrl || '/'}>{liveUrl || 'Loading…'}</a>
+          </div>
+          {recentChannels.length > 0 ? (
+            <div className="recent-channels">
+              <div className="site-footer-label">Recently Analyzed</div>
+              <div className="recent-channel-list">
+                {recentChannels.map((channel) => (
+                  <button
+                    key={`${channel.query}-${channel.viewedAt}`}
+                    type="button"
+                    className="recent-channel-chip"
+                    onClick={() => handleAnalyze(channel.query)}
+                  >
+                    {channel.thumbnail ? (
+                      <img
+                        src={channel.thumbnail}
+                        alt={channel.name}
+                        loading="lazy"
+                        onError={(event) => {
+                          (event.currentTarget as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    ) : null}
+                    <span>{channel.name}</span>
+                    <small>{channel.label}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
