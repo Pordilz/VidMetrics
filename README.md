@@ -1,36 +1,99 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VidMetrics
+
+> **Instant competitor intelligence for YouTube creators and agencies**
+
+![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-blue?style=flat-square&logo=tailwind-css)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=flat-square&logo=typescript)
+![Vercel](https://img.shields.io/badge/Deployed_on-Vercel-black?style=flat-square&logo=vercel)
+
+[**Live Demo**](https://vidmetrics-git-main-yahyas-projects-cbbf0863.vercel.app/)
+
+---
+
+## Features
+
+✅ **YouTube channel analysis** via URL, @handle, or channel ID  
+✅ **Video performance table** — views, likes, comments, engagement rate  
+✅ **VidScore** — proprietary 0-100 performance scoring algorithm  
+✅ **Trending detection** — flags high-velocity recent uploads  
+✅ **Channel comparison mode** — analyze up to 3 channels side by side  
+✅ **Summary stat cards** — total views, avg views, avg engagement, most active month  
+✅ **Top 10 videos bar chart** with gradient fills  
+✅ **CSV export** — download full analysis with one click  
+✅ **Demo mode** — pre-loaded data for instant presentation  
+✅ **Recently analyzed channels** — quick re-access via localStorage  
+✅ **Fully mobile responsive**
+
+---
 
 ## Getting Started
 
-First, run the development server:
+1. **Clone**:  
+   ```bash
+   git clone https://github.com/Pordilz/VidMetrics
+   cd vidmetrics
+   ```
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+2. **Install**:  
+   ```bash
+   npm install
+   ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. **Setup**:  
+   Create a `.env.local` file by copying the example and add your YouTube API key:
+   ```bash
+   cp .env.example .env.local
+   ```
+   *Add `YOUTUBE_API_KEY=your_key_here` to `.env.local`.*
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+4. **Run**:  
+   ```bash
+   npm run dev
+   ```
+   Visit [http://localhost:3000](http://localhost:3000) to see the dashboard.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## VidScore Algorithm
 
-To learn more about Next.js, take a look at the following resources:
+VidMetrics uses a proprietary scoring formula to rank video performance objectively across different channel sizes:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Views Score (40%)**: Normalized against the channel's highest-viewed video to measure relative success.
+- **Engagement Score (40%)**: Normalized against a 5% benchmark rate (likes + comments / views), rewarding high-interaction content.
+- **Recency Score (20%)**: Decays over time to highlight fresh content:
+    - **0–30 days**: 20 points
+    - **31–90 days**: 10 points
+    - **90+ days**: 0 points
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Architecture
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Next.js 14 App Router**: Leveraging Server Components and optimized routing for high performance.
+- **Server-Side API**: All API calls are executed through `/app/api/` routes to ensure security.
+- **Key Safety**: The YouTube API key is handled strictly server-side and never exposed to the client.
+- **Mock Data Fallback**: Built-in fallback system for demo stability if API quotas are exceeded.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## What's Next (V2)
+
+- 🤖 **AI Content Intelligence**: Claude API integration for automated script analysis and title suggestions.
+- 📧 **Scheduled Monitoring**: Daily/weekly performance reports sent directly to email.
+- 🔍 **Content Gap Analysis**: Identifying underserved topics by comparing competitors side-by-side.
+- 💬 **Sentiment Analysis**: Analyzing audience mood and feedback on top-performing comments.
+- 🏷️ **White-Label Export**: Personalized PDF reports for agency clients.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+| :--- | :--- |
+| **Framework** | Next.js 14 (App Router) |
+| **Styling** | Tailwind CSS + shadcn/ui |
+| **Charts** | Recharts / Chart.js |
+| **API** | YouTube Data API v3 |
+| **Deployment** | Vercel |
+| **Language** | TypeScript |

@@ -6,6 +6,15 @@ import { Marquee } from '@/components/landing/Marquee';
 import { validateYouTubeURL } from '@/lib/formatters';
 import { useRouter } from 'next/navigation';
 
+// SVG Logo Icon Component
+const LogoIcon = ({ size = 32, iconSize = 14 }: { size?: number, iconSize?: number }) => (
+  <div className="logo-icon" style={{ width: size, height: size, borderRadius: size / 4 }}>
+    <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  </div>
+);
+
 export default function LandingPage() {
   const [inputValue, setInputValue] = useState('');
   const [isValid, setIsValid] = useState(false);
@@ -51,10 +60,9 @@ export default function LandingPage() {
     <div className="landing-page">
       <nav className="landing-nav">
         <div className="logo">
-          <div className="logo-icon">▶</div>
+          <LogoIcon />
           VidMetrics
         </div>
-        <span className="nav-label">Competitive Intelligence</span>
       </nav>
 
       <div className="landing-hero">

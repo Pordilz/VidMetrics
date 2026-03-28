@@ -26,8 +26,9 @@ export function Hero3D() {
       if (!canvas) return;
       const parent = canvas.parentElement;
       if (!parent) return;
+      
       const rect = parent.getBoundingClientRect();
-      const w = rect.width * 0.6;
+      const w = rect.width;
       const h = rect.height;
 
       try {
@@ -44,13 +45,19 @@ export function Hero3D() {
       camera.position.set(2.5, 2.0, 4.0);
       camera.lookAt(0, 0.5, 0);
 
-      scene.add(new THREE.AmbientLight(0xF7F5F0, 0.5));
+      scene.add(new THREE.AmbientLight(0xF7F5F0, 0.7));
       const keyLight = new THREE.DirectionalLight(0xFFF5E6, 1.0);
       keyLight.position.set(4, 6, 3);
       scene.add(keyLight);
+
       const fillLight = new THREE.DirectionalLight(0xC8D8E8, 0.35);
       fillLight.position.set(-4, 2, 1);
       scene.add(fillLight);
+
+      // Add rim light for better shading
+      const rimLight = new THREE.DirectionalLight(0xFFFFFF, 0.4);
+      rimLight.position.set(0, -2, 5);
+      scene.add(rimLight);
 
       barGroup = new THREE.Group();
       scene.add(barGroup);
@@ -64,12 +71,12 @@ export function Hero3D() {
 
       for (let i = 0; i < barCount; i++) {
         const targetH = 0.3 + Math.random() * 2.4;
-        const geo = new THREE.BoxGeometry(barWidth, 0.01, barWidth);
-        const mat = new THREE.MeshStandardMaterial({ color: barColors[i % barColors.length], roughness: 0.35, metalness: 0.08 });
+        const geo = new THREE.BoxGeometry(barWidth, 1, barWidth);
+        const mat = new THREE.MeshStandardMaterial({ color: barColors[i % barColors.length], roughness: 0.4, metalness: 0.1 });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.x = startX + i * (barWidth + gap);
-        mesh.position.y = 0;
-        mesh.scale.y = 0.01;
+        mesh.position.y = 0.5;
+        mesh.scale.set(1, 0.01, 1);
         barGroup.add(mesh);
         bars.push({ mesh, targetH });
       }
@@ -87,10 +94,31 @@ export function Hero3D() {
       };
       document.addEventListener('mousemove', handleMouseMove);
 
+      const handleResize = () => {
+        if (!canvas || !renderer || !camera) return;
+        const p = canvas.parentElement;
+        if (!p) return;
+        const r = p.getBoundingClientRect();
+        renderer.setSize(r.width, r.height);
+        camera.aspect = r.width / r.height;
+        
+        // Adjust camera distance for mobile
+        if (r.width < 600) {
+          camera.position.z = 6.0;
+        } else {
+          camera.position.z = 4.0;
+        }
+        
+        camera.updateProjectionMatrix();
+      };
+      window.addEventListener('resize', handleResize);
+      handleResize(); // Initial call
+
       animate();
 
       return () => {
         document.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('resize', handleResize);
       };
     }
 
@@ -106,8 +134,8 @@ export function Hero3D() {
         const delay = i * 0.08;
         const progress = Math.min(1, Math.max(0, (elapsed - delay) / 0.8));
         const eased = 1 - Math.pow(1 - progress, 3);
-        const targetH = bar.targetH * eased;
-        bar.mesh.scale.y = Math.max(0.01, targetH * 100);
+        const targetH = Math.max(0.01, bar.targetH * eased);
+        bar.mesh.scale.y = targetH;
         bar.mesh.position.y = targetH / 2;
       });
 
@@ -132,6 +160,7 @@ export function Hero3D() {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
   }, []);
+
 
   return (
     <>

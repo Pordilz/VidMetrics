@@ -10,6 +10,9 @@ import { SpotlightCard } from '@/components/ui/spotlight-card';
 import BlurFade from '@/components/ui/blur-fade';
 import ShinyButton from '@/components/ui/shiny-button';
 
+import mrbeastData from '@/lib/mock-data/mrbeast.json';
+import mkbhdData from '@/lib/mock-data/mkbhd.json';
+
 Chart.register(...registerables);
 
 // ===== TYPES =====
@@ -40,107 +43,18 @@ interface VideoData {
 interface AppData {
   channel: ChannelData;
   videos: VideoData[];
+  isDemo?: boolean;
 }
 
-// ===== DEMO DATA ENGINE =====
-const DEMO_CHANNELS: Record<string, Omit<ChannelData, 'thumbnail'>> = {
-  '@MrBeast': { name: 'MrBeast', subs: '340M', videos: 812, country: 'US', created: '2012-02-20', verified: true },
-  '@mkbhd': { name: 'Marques Brownlee', subs: '19.8M', videos: 1621, country: 'US', created: '2008-03-21', verified: true },
-  '@VeritasiumOfficial': { name: 'Veritasium', subs: '16.2M', videos: 387, country: 'AU', created: '2011-01-21', verified: true },
-  '@LinusTechTips': { name: 'Linus Tech Tips', subs: '16.5M', videos: 6412, country: 'CA', created: '2008-11-24', verified: true },
+
+// Curated mock data for demo fallback
+const MOCK_MAP: Record<string, AppData> = {
+  'mrbeast': mrbeastData,
+  'mkbhd': mkbhdData,
+  'ucx6oq3dkcsbyne6h8uqquva': mrbeastData,
+  'ucbcrf18a7qf58cmattefwwq': mkbhdData
 };
 
-const VIDEO_TITLES = [
-  "I Spent 50 Hours Buried Alive", "This Technology Will Change Everything",
-  "We Built the World's Largest Domino Chain", "The Hidden Science of Everyday Things",
-  "I Gave Away $1,000,000 in 24 Hours", "Why Everyone is Wrong About AI",
-  "Surviving 100 Days in the Wilderness", "The Best Tech Under $100 — 2026 Edition",
-  "This Experiment Changed My Mind", "How One Decision Changed Everything",
-  "Building a House in 24 Hours", "Reacting to the Most Viral Videos Ever",
-  "I Tested Every Productivity Hack", "The Truth About Subscription Services",
-  "24 Hours Inside a Billionaire's Life", "Why This Simple Trick Works Every Time",
-  "I Challenged 100 People to Do This", "The Science of Going Viral",
-  "We Recreated Famous Movie Scenes", "I Tried Living on $1 for 30 Days",
-  "The Future of Electric Vehicles Explained", "Rating Every Fast Food Chain",
-  "I Let AI Control My Life for a Week", "The Most Underrated Gadgets of 2026",
-  "Inside the World's Most Secure Building", "How to Master Any Skill in 30 Days",
-  "This Changed How I Think About Money", "The Biggest Mistakes Beginners Make",
-  "I Traveled to the Most Remote Place", "Building a Business From Zero",
-  "Why This Trend is Dying", "The Ultimate Comparison Test",
-  "Day in the Life of a Content Creator", "I Gave Away 1000 Phones",
-  "The Real Cost of Living in 2026", "Testing Viral Life Hacks — Do They Work?",
-  "Inside the Factory That Makes Everything", "How I Gained 1M Subscribers",
-  "The Science Behind Perfect Coffee", "I Bought Everything in One Store",
-  "Tutorial: Advanced Video Editing Tips", "Why Minimalism Changed My Life",
-  "The Biggest Tech Fails This Year", "How Algorithms Really Work",
-  "I Survived 7 Days With No Sleep", "The Complete Beginner's Guide",
-  "Why Small Channels Win Big", "Behind the Scenes of Our Biggest Video",
-  "This Hack Saves 3 Hours Every Day", "The Psychology of Click-Through Rates"
-];
-
-const TAGS_POOL = ['tech','science','entertainment','tutorial','vlog','challenge','review','news','education','gaming','lifestyle','finance','travel','food','diy'];
-
-function generateDemoData(query: string): AppData {
-  const key = Object.keys(DEMO_CHANNELS).find(k => query.toLowerCase().includes(k.toLowerCase().replace('@', '')));
-  const base = key ? DEMO_CHANNELS[key] : {
-    name: query.replace(/[@/]|https?:\/\/.*\//g, '').replace(/\b\w/g, l => l.toUpperCase()),
-    subs: `${(Math.random() * 15 + 0.5).toFixed(1)}M`,
-    videos: Math.floor(Math.random() * 2000 + 100),
-    country: ['US','UK','CA','AU','DE','JP','KR','BR','IN','FR'][Math.floor(Math.random() * 10)],
-    created: `${2008 + Math.floor(Math.random() * 12)}-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}`,
-    verified: Math.random() > 0.3
-  };
-
-  const videos: VideoData[] = [];
-  const numVideos = 150 + Math.floor(Math.random() * 50);
-  const now = Date.now();
-  const shuffled = [...VIDEO_TITLES].sort(() => Math.random() - 0.5);
-
-  for (let i = 0; i < numVideos; i++) {
-    const daysAgo = Math.floor(Math.random() * 120);
-    const publishDate = new Date(now - daysAgo * 86400000);
-    const dayOfWeek = publishDate.getDay();
-    const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
-    const viewMultiplier = isWeekday ? 1.2 : 0.85;
-    const recencyBoost = daysAgo < 7 ? 2.5 : daysAgo < 14 ? 1.8 : daysAgo < 30 ? 1.3 : 1;
-    const baseViews = Math.floor((Math.random() * 5000000 + 50000) * viewMultiplier * recencyBoost);
-    const likeRate = 0.02 + Math.random() * 0.05;
-    const commentRate = 0.001 + Math.random() * 0.004;
-    const views = baseViews;
-    const likes = Math.floor(views * likeRate);
-    const comments = Math.floor(views * commentRate);
-    const duration = Math.floor(Math.random() * 1800 + 120);
-    const engagementRate = ((likes + comments) / views) * 100;
-    const tags: string[] = [];
-    const numTags = 2 + Math.floor(Math.random() * 4);
-    const tagPool = [...TAGS_POOL].sort(() => Math.random() - 0.5);
-    for (let t = 0; t < numTags; t++) tags.push(tagPool[t]);
-
-    videos.push({
-      id: 'vid_' + Math.random().toString(36).substr(2, 11),
-      title: shuffled[i % shuffled.length] + (i >= shuffled.length ? ` (Part ${Math.floor(i / shuffled.length) + 1})` : ''),
-      publishedAt: publishDate.toISOString(),
-      views, likes, comments, duration, engagementRate,
-      thumbnail: `https://picsum.photos/seed/${Math.floor(Math.random() * 10000)}/640/360`,
-      tags, trendingScore: 0
-    });
-  }
-
-  const avgViews = videos.reduce((s, v) => s + v.views, 0) / videos.length;
-  const avgEng = videos.reduce((s, v) => s + v.engagementRate, 0) / videos.length;
-
-  videos.forEach(v => {
-    const daysAgo = Math.floor((now - new Date(v.publishedAt).getTime()) / 86400000);
-    const recencyScore = Math.max(0, 100 - daysAgo * 3);
-    const viewVelocity = Math.min(100, (v.views / avgViews) * 50);
-    const engScore = Math.min(100, (v.engagementRate / avgEng) * 50);
-    v.trendingScore = Math.round(recencyScore * 0.4 + viewVelocity * 0.35 + engScore * 0.25);
-  });
-
-  videos.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-
-  return { channel: base, videos };
-}
 
 // ===== Parse ISO 8601 duration (PT1H2M3S) to seconds =====
 function parseDuration(iso: string): number {
@@ -150,8 +64,8 @@ function parseDuration(iso: string): number {
   return (parseInt(match[1] || '0') * 3600) + (parseInt(match[2] || '0') * 60) + parseInt(match[3] || '0');
 }
 
-// ===== TRY TO FETCH FROM REAL API, FALLBACK TO DEMO =====
-async function fetchChannelData(query: string): Promise<AppData> {
+// ===== TRY TO FETCH FROM REAL API, FALLBACK TO CURATED DEMO =====
+async function fetchChannelData(query: string): Promise<AppData | null> {
   try {
     // Build a URL for the API — if it's a handle like @MrBeast, wrap it
     let apiUrl = query;
@@ -214,16 +128,32 @@ async function fetchChannelData(query: string): Promise<AppData> {
       };
     });
 
-    return { channel, videos };
+    return { channel, videos, isDemo: false };
   } catch (error) {
-    console.error("Fetch error:", error);
-    // Only fallback to demo if specifically "API failed" or similar
-    // For now keep demo as safety, but ensure it receives the best name possible
-    return generateDemoData(query);
+    console.error("Fetch error, checking mock fallback:", error);
+    
+    // Normalize query for matching
+    const normalized = query.toLowerCase().replace(/[@/]|https?:\/\/.*\/|www\.youtube\.com\//g, '');
+    
+    if (MOCK_MAP[normalized]) {
+      return { ...MOCK_MAP[normalized], isDemo: true };
+    }
+    
+    return null;
   }
 }
 
+
 // ===== THE DASHBOARD =====
+// SVG Logo Icon Component
+const LogoIcon = ({ size = 32, iconSize = 14 }: { size?: number, iconSize?: number }) => (
+  <div className="logo-icon" style={{ width: size, height: size, borderRadius: size / 4 }}>
+    <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  </div>
+);
+
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -231,6 +161,7 @@ function DashboardContent() {
 
   const [appData, setAppData] = useState<AppData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [currentView, setCurrentView] = useState<'grid' | 'table'>('grid');
   const [currentSort, setCurrentSort] = useState('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -251,12 +182,18 @@ function DashboardContent() {
   useEffect(() => {
     if (query) {
       setLoading(true);
+      setFetchError(false);
       fetchChannelData(query).then(data => {
-        setAppData(data);
+        if (data) {
+          setAppData(data);
+        } else {
+          setFetchError(true);
+        }
         setLoading(false);
       });
     }
   }, [query]);
+
 
   // Render charts when data loads
   useEffect(() => {
@@ -302,6 +239,10 @@ function DashboardContent() {
           },
           options: {
             responsive: true, maintainAspectRatio: false,
+            interaction: {
+              mode: 'index',
+              intersect: false,
+            },
             plugins: {
               legend: { display: false },
               tooltip: {
@@ -338,11 +279,16 @@ function DashboardContent() {
             datasets: [{
               data: [totalViews, totalLikes * 100, totalComments * 1000],
               backgroundColor: ['#1A1714', '#E8441A', '#8FA68E'],
+              hoverBackgroundColor: ['#3A3532', '#F05A32', '#A9BDAB'],
               borderWidth: 0, spacing: 3, borderRadius: 4, hoverOffset: 12,
             }]
           },
           options: {
             responsive: true, maintainAspectRatio: false, cutout: '68%',
+            interaction: {
+              mode: 'nearest',
+              intersect: true,
+            },
             layout: { padding: 16 },
             plugins: {
               legend: { position: 'bottom', labels: { color: '#6B6560', font: { family: 'Instrument Sans', size: 12, weight: 500 }, padding: 16, usePointStyle: true, pointStyleWidth: 8 } },
@@ -540,7 +486,11 @@ function DashboardContent() {
         date.setDate(endOfCalendar.getDate() - (w * 7 + (6 - d)));
         
         if (date > today) {
-          cells.push(<div key={`${w}-${d}`} className="heatmap-cell" title="Future date" />);
+          cells.push(
+            <div key={`${w}-${d}`} className="heatmap-cell">
+              <div className="heatmap-tooltip">Future date</div>
+            </div>
+          );
           continue;
         }
 
@@ -552,11 +502,15 @@ function DashboardContent() {
         else if (count === 3) cls = 'l3';
         else if (count >= 4) cls = 'l4';
         
-        const titleContent = count > 0 
-          ? `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}: ${count} video${count !== 1 ? 's' : ''}` 
-          : `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}: No videos`;
-
-        cells.push(<div key={`${w}-${d}`} className={`heatmap-cell ${cls}`} title={titleContent} />);
+        const tooltipText = count > 0 
+          ? `${formatDate(date.toISOString())}: ${count} video${count !== 1 ? 's' : ''}` 
+          : `${formatDate(date.toISOString())}: No videos`;
+        
+        cells.push(
+          <div key={`${w}-${d}`} className={`heatmap-cell ${cls}`}>
+            <div className="heatmap-tooltip">{tooltipText}</div>
+          </div>
+        );
       }
       weeks.push(<div key={w} className="heatmap-col">{cells}</div>);
     }
@@ -567,7 +521,7 @@ function DashboardContent() {
           <div className="chart-label">Cadence</div>
           <div className="chart-title">Publishing Calendar</div>
           <div className="chart-subtitle" style={{ marginBottom: 16 }}>Upload frequency heatmap — last 52 weeks</div>
-          <div style={{ display: 'flex' }}>
+          <div className="heatmap-container">
             <div className="heatmap-days">
               {days.map(d => <span key={d} className="heatmap-day-label">{d}</span>)}
             </div>
@@ -581,10 +535,27 @@ function DashboardContent() {
   if (loading) {
     return (
       <div className="dashboard-page">
-        <nav className="dash-nav"><div className="dash-nav-inner"><div className="dash-nav-left"><div className="logo" style={{ fontSize: 15 }}><div className="logo-icon" style={{ width: 22, height: 22, fontSize: 11, borderRadius: 5 }}>▶</div>VidMetrics</div></div></div></nav>
+        <nav className="dash-nav"><div className="dash-nav-inner"><div className="dash-nav-left"><div className="logo" style={{ fontSize: 15 }}><LogoIcon size={22} iconSize={11} />VidMetrics</div></div></div></nav>
         <div style={{ maxWidth: 1280, margin: '0 auto', padding: '96px 48px', textAlign: 'center' }}>
           <div className="skeleton" style={{ width: 300, height: 40, margin: '0 auto 24px' }} />
           <div className="skeleton" style={{ width: 200, height: 20, margin: '0 auto' }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="dashboard-page">
+        <nav className="dash-nav"><div className="dash-nav-inner"><div className="dash-nav-left"><button className="back-btn" onClick={() => router.push('/')}>← Back</button><div className="logo" style={{ fontSize: 15 }}><LogoIcon size={22} iconSize={11} />VidMetrics</div></div></div></nav>
+        <div style={{ maxWidth: 600, margin: '140px auto 0', padding: '48px', textAlign: 'center', backgroundColor: '#fff', borderRadius: 24, boxShadow: '0 20px 40px rgba(0,0,0,0.05)', border: '1px solid #E2DDD6' }}>
+          <div style={{ fontSize: 48, marginBottom: 24 }}>⚠️</div>
+          <h2 style={{ fontSize: 24, marginBottom: 16, color: '#1A1714' }}>Unable to fetch live data.</h2>
+          <p style={{ color: '#6B6560', marginBottom: 32, fontSize: 16 }}>The YouTube API might be at its limit or the connection failed. Enter @mrbeast or @mkbhd to see a demo.</p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+            <ShinyButton onClick={() => router.push('/dashboard?q=@mrbeast')}>Load MrBeast Demo</ShinyButton>
+            <button className="back-btn" style={{ margin: 0, padding: '12px 24px' }} onClick={() => router.push('/')}>New Search</button>
+          </div>
         </div>
       </div>
     );
@@ -606,7 +577,7 @@ function DashboardContent() {
           <div className="dash-nav-left">
             <button className="back-btn" onClick={() => router.push('/')}>← New Search</button>
             <div className="logo" style={{ fontSize: 15 }}>
-              <div className="logo-icon" style={{ width: 22, height: 22, fontSize: 11, borderRadius: 5 }}>▶</div>
+              <LogoIcon size={22} iconSize={11} />
               VidMetrics
             </div>
           </div>
@@ -631,7 +602,11 @@ function DashboardContent() {
             <div className={`channel-avatar-placeholder ${appData.channel.thumbnail ? 'hidden-placeholder' : ''}`} style={appData.channel.thumbnail ? { display: 'none' } : {}}>{appData.channel.name.charAt(0)}</div>
           </div>
           <div className="channel-meta">
-            <h1>{appData.channel.name} {appData.channel.verified && <span className="verified-badge">✓</span>}</h1>
+            <h1 style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {appData.channel.name} {appData.channel.verified && <span className="verified-badge">✓</span>}
+              {appData.isDemo && <span className="demo-badge">Demo Data</span>}
+            </h1>
+
             <div className="channel-stats">
               <span className="channel-stat"><strong>{appData.channel.subs}</strong> subscribers</span>
               <span className="channel-stat"><strong>{appData.channel.videos.toLocaleString()}</strong> videos</span>
@@ -679,7 +654,7 @@ function DashboardContent() {
           <div className="chart-label">Performance</div>
           <div className="chart-title">Views Over Time</div>
           <div className="chart-subtitle">Per-video view counts by publish date</div>
-          <div className="chart-container"><canvas ref={viewsChartRef} /></div>
+          <div className="chart-container is-scrollable"><canvas ref={viewsChartRef} /></div>
         </div>
         <div className="chart-card">
           <div className="chart-label">Engagement</div>
@@ -794,6 +769,43 @@ function DashboardContent() {
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile-only Card View (for Table mode) */}
+        <div className="video-cards-mobile">
+          {paged.map(v => {
+            const trend = getTrendLabel(v.trendingScore);
+            return (
+              <div key={v.id} className="mobile-video-card" onClick={() => setModalVideo(v)}>
+                <div className="mobile-video-thumb">
+                  <img src={v.thumbnail} alt={v.title} loading="lazy" />
+                  <span className="duration-badge">{formatDuration(v.duration)}</span>
+                </div>
+                <div className="mobile-video-content">
+                  <div className="mobile-video-title">{v.title}</div>
+                  <div className="mobile-video-badges">
+                    <span className={`trending-badge ${trend.cls}`} style={{ position: 'static' }}>{v.trendingScore} Score</span>
+                    {v.trendingScore >= 70 && <span className="trending-badge hot" style={{ position: 'static' }}>Trending</span>}
+                  </div>
+                  <div className="mobile-stats-grid">
+                    <div className="mobile-stat-item">
+                      <span className="mobile-stat-value">{formatNumber(v.views)}</span>
+                      <span className="mobile-stat-label">Views</span>
+                    </div>
+                    <div className="mobile-stat-item">
+                      <span className="mobile-stat-value">{formatNumber(v.likes)}</span>
+                      <span className="mobile-stat-label">Likes</span>
+                    </div>
+                    <div className="mobile-stat-item">
+                      <span className="mobile-stat-value">{formatNumber(v.comments)}</span>
+                      <span className="mobile-stat-label">Comments</span>
+                    </div>
+                  </div>
+                  <div className="mobile-video-date">{timeAgo(v.publishedAt)} · {formatDate(v.publishedAt)}</div>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Pagination */}
